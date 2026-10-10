@@ -7,7 +7,9 @@ if (NOT EMSCRIPTEN)
   SUBMODULES "third_party/avro-c"
   APPLY_PATCHES
 )
-  duckdb_extension_statically_link(avro)
+  if (NOT "$ENV{DONT_LINK}" STREQUAL "1")
+    duckdb_extension_statically_link(avro)
+  endif()
 endif()
 
 # Extension from this repo
@@ -20,7 +22,10 @@ duckdb_extension_load(iceberg
 # Static registration order is also database startup load order. Avro above and
 # Parquet here must precede Iceberg, so fresh databases (including CSV result readers)
 # do not try to auto-install unsigned copies from the build's extension repository.
-duckdb_extension_statically_link(parquet json iceberg)
+duckdb_extension_statically_link(parquet json)
+if (NOT "$ENV{DONT_LINK}" STREQUAL "1")
+  duckdb_extension_statically_link(iceberg)
+endif()
 
 if (NOT EMSCRIPTEN)
   duckdb_extension_load(tpch)

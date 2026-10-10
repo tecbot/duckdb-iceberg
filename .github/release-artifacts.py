@@ -138,7 +138,7 @@ def catalog():
                     ) as response:
                         if response.status == 200:
                             break
-                except (urllib.error.URLError, TimeoutError):
+                except (urllib.error.URLError, OSError):
                     if time.monotonic() > deadline:
                         raise RuntimeError("Fixture did not become ready")
                     time.sleep(2)
