@@ -1,5 +1,9 @@
 name: Build & Test against catalogs
-on: [push, pull_request,repository_dispatch]
+on:
+  push:
+    branches: [main, v1.5-variegata]
+  pull_request:
+  repository_dispatch:
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}-${{ github.head_ref || '' }}-${{ github.base_ref || '' }}-${{ github.ref != 'refs/heads/main' || github.sha }}
   cancel-in-progress: true

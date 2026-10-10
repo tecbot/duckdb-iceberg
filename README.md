@@ -118,3 +118,16 @@ make fixture-data-local
 This extension was initially developed as part of a customer project for [RelationalAI](https://relational.ai/),
 who have agreed to open source the extension. We would like to thank RelationalAI for their support
 and their commitment to open source enabling us to share this extension with the community.
+
+## Fork releases
+
+Download the binary for your DuckDB version and platform from [GitHub Releases](https://github.com/tecbot/duckdb-iceberg/releases). The release includes Linux AMD64 and macOS ARM64 binaries, `SHA256SUMS`, and platform JSON files with the source commits. Linux binaries require glibc 2.28 or later. The 2.0 development binary requires the exact engine commit stated in its release.
+
+Verify the checksums. Enable `allow_unsigned_extensions` when you start DuckDB. For the DuckDB CLI, use `duckdb -unsigned`. Load the bundled Avro file for the same platform, then load the Iceberg file:
+
+```sql
+LOAD '/absolute/path/to/avro.duckdb_extension';
+LOAD '/absolute/path/to/iceberg.duckdb_extension';
+```
+
+Use the release workflow to build and test both platforms. Push a tag in the form `iceberg-snapshot-properties-duckdb-<version>-v1` from the branch that holds the matching `.github/release-target.json`. The workflow verifies file loading, SQL behavior, REST writes, engine identity, and checksums before it creates the GitHub release. It uses Python 3.14.

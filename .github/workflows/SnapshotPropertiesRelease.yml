@@ -1,0 +1,85 @@
+name: Snapshot properties release
+on:
+  push:
+    tags:
+      - 'iceberg-snapshot-properties-duckdb-*'
+permissions:
+  contents: read
+concurrency:
+  group: snapshot-properties-release-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            platform: linux_amd64
+          - runner: macos-15
+            platform: osx_arm64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 120
+    env:
+      GEN: ninja
+      CMAKE_BUILD_PARALLEL_LEVEL: '2'
+      VCPKG_MAX_CONCURRENCY: '2'
+      DONT_LINK: '1'
+      DUCKDB_PLATFORM: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          submodules: recursive
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.14'
+      - name: Build on Linux
+        if: runner.os == 'Linux'
+        run: |
+          docker build -f .github/release.Dockerfile -t iceberg-release .
+          docker run --rm -v "$PWD:/source" -w /source \
+            -e GEN -e CMAKE_BUILD_PARALLEL_LEVEL -e VCPKG_MAX_CONCURRENCY \
+            -e DONT_LINK -e DUCKDB_PLATFORM iceberg-release \
+            bash .github/release-build.sh
+      - name: Build on macOS
+        if: runner.os == 'macOS'
+        run: |
+          brew install ninja autoconf automake libtool pkg-config
+          python -m pip install cmake==4.0.2
+          git clone https://github.com/microsoft/vcpkg.git "$RUNNER_TEMP/iceberg-vcpkg"
+          git -C "$RUNNER_TEMP/iceberg-vcpkg" checkout cd61e1e26a038e82d6550a3ebbe0fbbfe7da78e3
+          "$RUNNER_TEMP/iceberg-vcpkg/bootstrap-vcpkg.sh" -disableMetrics
+          export VCPKG_TOOLCHAIN_PATH="$RUNNER_TEMP/iceberg-vcpkg/scripts/buildsystems/vcpkg.cmake"
+          bash .github/release-build.sh
+      - name: Verify file loading and run SQL tests
+        run: python .github/release-artifacts.py verify
+      - name: Test REST snapshot operations
+        if: runner.os == 'Linux'
+        run: python .github/release-artifacts.py catalog
+      - name: Package verified binary
+        run: python .github/release-artifacts.py package
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.platform }}
+          path: build/release-assets/*
+          if-no-files-found: error
+  publish:
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.14'
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          path: build/release-assets
+          merge-multiple: true
+      - name: Publish verified release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python .github/release-artifacts.py publish

@@ -1,0 +1,12 @@
+{
+  "duckdb_version": "v1.5.6",
+  "duckdb_commit": "069cc9f9b5be802405797faecc284961b07c70ef",
+  "catalog": "fixture",
+  "catalog_tests": [
+    "test_snapshot_properties.test",
+    "test_snapshot_properties_operations.test",
+    "test_snapshot_properties_operations_v3.test",
+    "test_snapshot_properties_conflict.test"
+  ],
+  "prerelease": false
+}
