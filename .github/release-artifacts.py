@@ -45,10 +45,35 @@ def quote(value):
 
 
 def test(path, config=None):
-    args = [str(BUILD / "test/unittest")]
-    if config:
-        args.extend(["--test-config", config])
-    result = run(*args, str(path), capture_output=True)
+    config_value = json.loads(Path(config).read_text()) if config else {}
+    load = (
+        f"LOAD {quote(BUILD / 'extension/avro/avro.duckdb_extension')}; "
+        f"LOAD {quote(BUILD / 'extension/iceberg/iceberg.duckdb_extension')}; "
+    )
+    config_value["on_init"] = load + config_value.get("on_init", "")
+    config_value["statically_loaded_extensions"] = [
+        "core_functions",
+        "parquet",
+        "json",
+        "httpfs",
+        "icu",
+    ]
+    with tempfile.TemporaryDirectory() as directory:
+        config_value.setdefault("settings", []).append(
+            {"name": "extension_directory", "value": directory}
+        )
+        config_path = Path(directory) / "config.json"
+        config_path.write_text(json.dumps(config_value))
+        result = run(
+            str(BUILD / "test/unittest"),
+            "--autoloading",
+            "all",
+            "--test-config",
+            str(config_path),
+            str(path),
+            capture_output=True,
+            env={**os.environ, "LOCAL_EXTENSION_REPO": str(BUILD / "repository")},
+        )
     output = result.stdout + result.stderr
     print(output)
     if not re.search(r"All tests passed \([1-9][0-9]* assertion", output):
