@@ -38,7 +38,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           docker build -f .github/release.Dockerfile -t iceberg-release .
-          docker run --rm -v "$PWD:/source" -w /source \
+          docker run --rm -v "$PWD:$PWD" -w "$PWD" \
             -e GEN -e CMAKE_BUILD_PARALLEL_LEVEL -e VCPKG_MAX_CONCURRENCY \
             -e DONT_LINK -e DUCKDB_PLATFORM iceberg-release \
             bash .github/release-build.sh

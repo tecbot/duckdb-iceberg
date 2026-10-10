@@ -21,7 +21,8 @@ PLATFORMS = {"linux_amd64", "osx_arm64"}
 
 
 def run(*args, **kwargs):
-    return subprocess.run(args, check=True, text=True, **kwargs)
+    kwargs.setdefault("check", True)
+    return subprocess.run(args, text=True, **kwargs)
 
 
 def git(*args):
@@ -66,16 +67,20 @@ def test(path, config=None):
         config_path.write_text(json.dumps(config_value))
         result = run(
             str(BUILD / "test/unittest"),
+            "--test-dir",
+            str(ROOT),
             "--autoloading",
             "all",
             "--test-config",
             str(config_path),
             str(path),
             capture_output=True,
+            check=False,
             env={**os.environ, "LOCAL_EXTENSION_REPO": str(BUILD / "repository")},
         )
     output = result.stdout + result.stderr
     print(output)
+    result.check_returncode()
     if not re.search(r"All tests passed \([1-9][0-9]* assertion", output):
         raise RuntimeError(f"Test did not execute assertions: {path}")
 
