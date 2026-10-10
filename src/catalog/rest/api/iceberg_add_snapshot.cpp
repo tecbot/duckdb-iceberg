@@ -171,7 +171,7 @@ void IcebergAddSnapshot::CreateUpdate(DatabaseInstance &db, ClientContext &conte
 	auto &avro_copy = avro_copy_p->Cast<CopyFunctionCatalogEntry>().function;
 
 	const auto &uncommitted_manifest_files = manifest_files;
-	D_ASSERT(!uncommitted_manifest_files.empty());
+	D_ASSERT(!uncommitted_manifest_files.empty() || operation == IcebergSnapshotOperationType::APPEND);
 
 	auto &table_metadata = commit_state.table_info.table_metadata;
 

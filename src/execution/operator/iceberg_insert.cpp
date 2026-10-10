@@ -482,14 +482,12 @@ SinkFinalizeType IcebergInsert::Finalize(Pipeline &pipeline, Event &event, Clien
 		}
 	} else {
 		// Regular insert: commit an append snapshot.
-		if (!written_files.empty()) {
-			ApplyTableUpdate(table_info, iceberg_transaction, [&](IcebergTableInformation &tbl) {
-				auto &transaction_data = tbl.GetOrCreateTransactionData(iceberg_transaction);
-				IcebergManifestDeletes empty_deletes;
-				transaction_data.AddSnapshot(IcebergSnapshotOperationType::APPEND, std::move(written_files),
-				                             std::move(empty_deletes));
-			});
-		}
+		ApplyTableUpdate(table_info, iceberg_transaction, [&](IcebergTableInformation &tbl) {
+			auto &transaction_data = tbl.GetOrCreateTransactionData(iceberg_transaction);
+			IcebergManifestDeletes empty_deletes;
+			transaction_data.AddSnapshot(IcebergSnapshotOperationType::APPEND, std::move(written_files),
+			                             std::move(empty_deletes));
+		});
 	}
 	return SinkFinalizeType::READY;
 }

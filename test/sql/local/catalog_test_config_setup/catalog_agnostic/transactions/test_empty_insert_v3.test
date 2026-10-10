@@ -1,0 +1,87 @@
+# name: test/sql/local/catalog_test_config_setup/catalog_agnostic/transactions/test_empty_insert_v3.test
+# description: Empty appends preserve V3 row IDs and the next-row-id cursor
+# group: [transactions]
+
+require-env CATALOG_TEST_CONFIG_SETUP
+
+require-env FORMAT_V3_SUPPORT
+
+require avro
+
+require parquet
+
+require iceberg
+
+require httpfs
+
+require json
+
+statement ok
+set session iceberg_use_metadata_log = false;
+
+statement ok
+drop table if exists my_datalake.default.empty_insert_v3;
+
+statement ok
+create table my_datalake.default.empty_insert_v3 (id integer) with ('format-version' = 3);
+
+statement ok
+insert into my_datalake.default.empty_insert_v3 select 0 where false;
+
+query III
+select json_extract_string(metadata::JSON, '$."next-row-id"')::BIGINT,
+       json_extract_string(metadata::JSON, '$.snapshots[0]."first-row-id"')::BIGINT,
+       json_extract_string(metadata::JSON, '$.snapshots[0]."added-rows"')::BIGINT
+from iceberg_load_table_response(my_datalake.default.empty_insert_v3);
+----
+0	0	0
+
+statement ok
+insert into my_datalake.default.empty_insert_v3 values (11), (22);
+
+statement ok
+set iceberg_snapshot_properties = '{"application.transaction-id":"empty-v3"}';
+
+statement ok
+insert into my_datalake.default.empty_insert_v3 select 0 where false;
+
+statement ok
+reset iceberg_snapshot_properties;
+
+query IIIIT
+select json_extract_string(metadata::JSON, '$."next-row-id"')::BIGINT,
+       json_extract_string(metadata::JSON, '$.snapshots[2]."first-row-id"')::BIGINT,
+       json_extract_string(metadata::JSON, '$.snapshots[2]."added-rows"')::BIGINT,
+       json_extract_string(metadata::JSON, '$.snapshots[2].summary."total-records"')::BIGINT,
+       json_extract_string(metadata::JSON, '$.snapshots[2].summary."application.transaction-id"')
+from iceberg_load_table_response(my_datalake.default.empty_insert_v3);
+----
+2	2	0	2	empty-v3
+
+query II
+select id, _row_id from my_datalake.default.empty_insert_v3 order by id;
+----
+11	0
+22	1
+
+statement ok
+insert into my_datalake.default.empty_insert_v3 values (33);
+
+query II
+select id, _row_id from my_datalake.default.empty_insert_v3 order by id;
+----
+11	0
+22	1
+33	2
+
+query I
+select json_extract_string(metadata::JSON, '$."next-row-id"')::BIGINT
+from iceberg_load_table_response(my_datalake.default.empty_insert_v3);
+----
+3
+
+statement ok
+drop table my_datalake.default.empty_insert_v3;
+
+statement ok
+reset session iceberg_use_metadata_log;
