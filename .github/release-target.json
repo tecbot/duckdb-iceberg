@@ -8,5 +8,5 @@
     "test_snapshot_properties_retry.test"
   ],
   "prerelease": true,
-  "release_revision": 2
+  "release_revision": 3
 }
