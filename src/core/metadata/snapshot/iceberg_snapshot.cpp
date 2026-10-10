@@ -4,6 +4,7 @@
 
 #include "core/metadata/iceberg_table_metadata.hpp"
 #include "catalog/rest/catalog_entry/table/iceberg_table_information.hpp"
+#include "common/iceberg_snapshot_properties.hpp"
 
 namespace duckdb {
 
@@ -155,6 +156,15 @@ static const idx_t SNAPSHOT_METRIC_KEYS_SIZE = sizeof(SNAPSHOT_METRIC_KEYS) / si
 
 } // namespace
 
+bool IcebergSnapshotMetrics::IsMetricKey(const string &key) {
+	for (const auto &item : SNAPSHOT_METRIC_KEYS) {
+		if (key == item.name) {
+			return true;
+		}
+	}
+	return false;
+}
+
 static string MetricsTypeToString(IcebergSnapshotMetricType type) {
 	for (idx_t i = 0; i < SNAPSHOT_METRIC_KEYS_SIZE; i++) {
 		auto &item = SNAPSHOT_METRIC_KEYS[i];
@@ -165,7 +175,7 @@ static string MetricsTypeToString(IcebergSnapshotMetricType type) {
 	throw InvalidConfigurationException("Metrics type not implemented: %d", static_cast<uint8_t>(type));
 }
 
-static IcebergSnapshotMetrics MetricsFromSummary(const case_insensitive_map_t<string> &snapshot_summary) {
+static IcebergSnapshotMetrics MetricsFromSummary(const unordered_map<string, string> &snapshot_summary) {
 	IcebergSnapshotMetrics ret;
 	auto &metrics = ret.metrics;
 	for (idx_t i = 0; i < SNAPSHOT_METRIC_KEYS_SIZE; i++) {
@@ -196,6 +206,11 @@ rest_api_objects::Snapshot IcebergSnapshot::ToRESTObject(const IcebergTableMetad
 	auto &metrics_map = metrics.metrics;
 	for (auto &entry : metrics_map) {
 		res.summary.additional_properties[MetricsTypeToString(entry.first)] = std::to_string(entry.second);
+	}
+
+	for (const auto &property : custom_properties) {
+		IcebergSnapshotProperties::ValidateKey(property.first);
+		res.summary.additional_properties.emplace(property.first, property.second);
 	}
 
 	if (!has_parent_snapshot) {
@@ -243,6 +258,11 @@ IcebergSnapshot IcebergSnapshot::ParseSnapshot(const rest_api_objects::Snapshot 
 	ret.schema_id = snapshot.schema_id;
 	ret.manifest_list = snapshot.manifest_list;
 	ret.metrics = MetricsFromSummary(snapshot.summary.additional_properties);
+	for (const auto &property : snapshot.summary.additional_properties) {
+		if (!IcebergSnapshotMetrics::IsMetricKey(property.first)) {
+			ret.custom_properties.emplace(property.first, property.second);
+		}
+	}
 
 	auto &op = snapshot.summary.operation;
 	if (op == "append") {
@@ -280,8 +300,8 @@ yyjson_mut_val *IcebergSnapshot::ToJSON(const rest_api_objects::Snapshot &snapsh
 	for (auto &prop : snapshot.summary.additional_properties) {
 		//! Register the string as part of the document, to ensure lifetime correctness
 		auto &key = prop.first;
-		auto key_val = unsafe_yyjson_mut_strncpy(doc, key.c_str(), key.size());
-		yyjson_mut_obj_add_strcpy(doc, summary_json, key_val, prop.second.c_str());
+		yyjson_mut_obj_add(summary_json, yyjson_mut_strncpy(doc, key.data(), key.size()),
+		                   yyjson_mut_strncpy(doc, prop.second.data(), prop.second.size()));
 	}
 	yyjson_mut_obj_add_uint(doc, snapshot_obj, "schema-id", snapshot.schema_id);
 	if (snapshot.has_first_row_id) {

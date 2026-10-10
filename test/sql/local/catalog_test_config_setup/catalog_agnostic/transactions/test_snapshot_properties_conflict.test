@@ -1,0 +1,110 @@
+# name: test/sql/local/catalog_test_config_setup/catalog_agnostic/transactions/test_snapshot_properties_conflict.test
+# description: A stale commit publishes no properties; an application retry sets the original map again
+# group: [transactions]
+
+require-env CATALOG_TEST_CONFIG_SETUP
+
+require-env ATOMIC_COMMIT_CONFLICT_SUPPORT
+
+require avro
+
+require parquet
+
+require iceberg
+
+require httpfs
+
+require json
+
+statement ok
+drop table if exists my_datalake.default.snapshot_properties_conflict;
+
+statement ok
+create table my_datalake.default.snapshot_properties_conflict (id integer);
+
+statement ok
+insert into my_datalake.default.snapshot_properties_conflict values (0);
+
+statement ok pending
+begin;
+
+statement ok pending
+set iceberg_snapshot_properties = '{"application.transaction-id":"conflict-original","Tag":"upper","tag":"lower"}';
+
+statement ok pending
+insert into my_datalake.default.snapshot_properties_conflict values (1);
+
+# Advance the head after the pending write has pinned its parent snapshot.
+statement ok winner
+set iceberg_snapshot_properties = '{"application.transaction-id":"winner"}';
+
+statement ok winner
+insert into my_datalake.default.snapshot_properties_conflict values (2);
+
+statement ok pending
+set iceberg_snapshot_properties = '{"application.transaction-id":"later"}';
+
+statement ok pending
+reset iceberg_snapshot_properties;
+
+# DuckDB 1.5.6 reports a conflict instead of retrying the commit.
+statement error pending
+commit;
+----
+Failed to commit Iceberg transaction
+
+query ITTT
+select json_extract_string(snap, '$."sequence-number"')::BIGINT,
+       json_extract_string(snap, '$.summary."application.transaction-id"'),
+       json_extract_string(snap, '$.summary.Tag'), json_extract_string(snap, '$.summary.tag')
+from (
+ select unnest(json_extract(metadata::JSON, '$.snapshots[*]')) as snap
+ from iceberg_load_table_response(my_datalake.default.snapshot_properties_conflict)
+)
+order by 1;
+----
+1	NULL	NULL	NULL
+2	winner	NULL	NULL
+
+query I
+select count(*) from my_datalake.default.snapshot_properties_conflict;
+----
+2
+
+# An application retry is a new write. It must set its original properties again.
+statement ok pending
+set iceberg_snapshot_properties = '{"application.transaction-id":"conflict-original","Tag":"upper","tag":"lower"}';
+
+statement ok pending
+begin;
+
+statement ok pending
+insert into my_datalake.default.snapshot_properties_conflict values (1);
+
+statement ok pending
+reset iceberg_snapshot_properties;
+
+statement ok pending
+commit;
+
+query ITTT
+select json_extract_string(snap, '$."sequence-number"')::BIGINT,
+       json_extract_string(snap, '$.summary."application.transaction-id"'),
+       json_extract_string(snap, '$.summary.Tag'), json_extract_string(snap, '$.summary.tag')
+from (
+ select unnest(json_extract(metadata::JSON, '$.snapshots[*]')) as snap
+ from iceberg_load_table_response(my_datalake.default.snapshot_properties_conflict)
+)
+order by 1;
+----
+1	NULL	NULL	NULL
+2	winner	NULL	NULL
+3	conflict-original	upper	lower
+
+query I
+select count(*) from my_datalake.default.snapshot_properties_conflict;
+----
+3
+
+statement ok
+drop table my_datalake.default.snapshot_properties_conflict;

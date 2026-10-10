@@ -190,6 +190,7 @@ void IcebergAddSnapshot::CreateUpdate(DatabaseInstance &db, ClientContext &conte
 	//! Construct the snapshot
 	IcebergSnapshot new_snapshot;
 	new_snapshot.operation = operation;
+	new_snapshot.custom_properties = snapshot_properties;
 	new_snapshot.snapshot_id = snapshot_id;
 	new_snapshot.sequence_number = sequence_number;
 	new_snapshot.SetSchemaId(schema_id);
@@ -234,6 +235,10 @@ void IcebergAddSnapshot::CreateUpdate(DatabaseInstance &db, ClientContext &conte
 
 	//! Finally add a Iceberg REST Catalog 'TableUpdate' to commit
 	commit_state.table_change.updates.push_back(CreateAddSnapshotUpdate(table_info, *commit_state.latest_snapshot));
+}
+
+void IcebergAddSnapshot::SetSnapshotProperties(unordered_map<string, string> properties) {
+	snapshot_properties = std::move(properties);
 }
 
 void IcebergAddSnapshot::AddManifestFile(IcebergManifestListEntry &&manifest_file) {

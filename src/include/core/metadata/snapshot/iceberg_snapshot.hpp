@@ -30,6 +30,8 @@ struct IcebergManifestFile;
 
 struct IcebergSnapshotMetrics {
 public:
+	static bool IsMetricKey(const string &key);
+
 	IcebergSnapshotMetrics();
 	IcebergSnapshotMetrics(const IcebergSnapshot &parent_snapshot);
 
@@ -68,6 +70,7 @@ public:
 	timestamp_t timestamp_ms;
 	string manifest_list;
 	IcebergSnapshotMetrics metrics;
+	unordered_map<string, string> custom_properties;
 
 private:
 	int32_t schema_id;

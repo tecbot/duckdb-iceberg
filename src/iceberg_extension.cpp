@@ -21,6 +21,7 @@
 #include "catalog/rest/storage/authorization/sigv4.hpp"
 #include "catalog/rest/storage/iceberg_table_secret_provider.hpp"
 #include "common/iceberg_utils.hpp"
+#include "common/iceberg_snapshot_properties.hpp"
 #include "iceberg_logging.hpp"
 #include "iceberg_options.hpp"
 #include "function/copy/iceberg_copy_function.hpp"
@@ -56,6 +57,11 @@ static void LoadInternal(ExtensionLoader &loader) {
 	}
 
 	auto &config = DBConfig::GetConfig(instance);
+
+	config.AddExtensionOption(
+	    SNAPSHOT_PROPERTIES_CONFIG_VARIABLE,
+	    "Custom snapshot summary properties as a JSON object with string values, for this session",
+	    LogicalType::VARCHAR, Value("{}"), IcebergSnapshotProperties::Set, SetScope::SESSION);
 
 	config.AddExtensionOption("unsafe_enable_version_guessing",
 	                          "Enable globbing the filesystem (if possible) to find the latest version metadata. This "

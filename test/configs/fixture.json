@@ -13,6 +13,14 @@
     {
       "env_name": "CATALOG_TEST_CONFIG_SETUP",
       "env_value": "fixture"
+    },
+    {
+      "env_name": "FORMAT_V3_SUPPORT",
+      "env_value": "true"
+    },
+    {
+      "env_name": "ATOMIC_COMMIT_CONFLICT_SUPPORT",
+      "env_value": "true"
     }
   ]
 }

@@ -203,9 +203,10 @@ PRIMITIVE_TYPE_MAPPING = {
 
 
 class CPPClass:
-    def __init__(self, class_name, parse_info: ParseInfo):
+    def __init__(self, class_name, parse_info: ParseInfo, case_sensitive_properties: bool = False):
         self.name = class_name
         self.parse_info = parse_info
+        self.case_sensitive_properties = case_sensitive_properties
         # The base classes that make up this class
         self.one_of: List[OneOf] = []
         self.all_of: List[AllOf] = []
@@ -350,7 +351,10 @@ class CPPClass:
             ]
         )
         # FIXME: check for null in returned char*?
-        res.append('\tauto key_str = yyjson_get_str(key);')
+        if self.case_sensitive_properties:
+            res.append('\tstring key_str(yyjson_get_str(key), yyjson_get_len(key));')
+        else:
+            res.append('\tauto key_str = yyjson_get_str(key);')
         res.extend(self.additional_properties.skip_if_excluded)
         res.extend(self.additional_properties.body)
         res.extend(
@@ -666,10 +670,13 @@ class CPPClass:
                     ]
                 )
             else:
+                conversion = f'{generic_mapping.conversion}({source})'
+                if self.case_sensitive_properties and item_type == 'string':
+                    conversion = f'string(yyjson_get_str({source}), yyjson_get_len({source}))'
                 res.extend(
                     [
                         f'{prefix}if ({generic_mapping.type_check}({source})) {{',
-                        f'\t{target} = {generic_mapping.conversion}({source});',
+                        f'\t{target} = {conversion};',
                     ]
                 )
 
@@ -801,7 +808,8 @@ class CPPClass:
         exclude_list = []
         if properties:
             exclude_list = [
-                'case_insensitive_set_t handled_properties {',
+                ('unordered_set<string>' if self.case_sensitive_properties else 'case_insensitive_set_t')
+                + ' handled_properties {',
                 f"""\t\t{', '.join(f'"{x}"' for x in properties)} }};""",
             ]
             skip_if_excluded = [
@@ -833,7 +841,12 @@ class CPPClass:
             body=body, exclude_list=exclude_list, skip_if_excluded=skip_if_excluded
         )
         variable_type = self.generate_variable_type(additional_properties)
-        self.variables.append(f'\tcase_insensitive_map_t<{variable_type}> additional_properties;')
+        map_type = (
+            f'unordered_map<string, {variable_type}>'
+            if self.case_sensitive_properties
+            else f'case_insensitive_map_t<{variable_type}>'
+        )
+        self.variables.append(f'\t{map_type} additional_properties;')
 
     def generate_variable_type(self, schema: Property) -> str:
         if schema.type == Property.Type.OBJECT:
@@ -876,7 +889,11 @@ class CPPClass:
         generated_schemas_referenced = [x for x in self.referenced_schemas if x not in self.parse_info.schemas]
         for item in generated_schemas_referenced:
             parsed_schema = self.parse_info.parsed_schemas[item]
-            nested_class = CPPClass(item, self.parse_info)
+            is_snapshot_summary = self.name == "Snapshot" and any(
+                name == "summary" and isinstance(prop, SchemaReferenceProperty) and prop.ref == item
+                for name, prop in self.parse_info.parsed_schemas[self.name].properties.items()
+            )
+            nested_class = CPPClass(item, self.parse_info, case_sensitive_properties=is_snapshot_summary)
             nested_class.from_property(parsed_schema)
             self.nested_classes[item] = nested_class
 
@@ -928,6 +945,10 @@ if __name__ == '__main__':
                 for x in sorted(list(include_schemas))
                 if x not in parse_info.recursive_schemas
             ]
+            if name == 'Snapshot':
+                additional_headers.extend(
+                    ['#include "duckdb/common/unordered_map.hpp"', '#include "duckdb/common/unordered_set.hpp"']
+                )
             file_content = HEADER_FORMAT.format(
                 ADDITIONAL_HEADERS='\n'.join(additional_headers),
                 FORWARD_DECLARATIONS='\n'.join(forward_declarations),

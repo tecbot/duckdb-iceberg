@@ -5,6 +5,28 @@
 This repository contains a DuckDB extension that adds support for [Apache Iceberg](https://iceberg.apache.org/). In its current state, the extension offers some basics features that allow listing snapshots and reading specific snapshots
 of an iceberg tables.
 
+## Custom snapshot summary properties
+
+This compatibility branch targets DuckDB v1.5.6.
+
+Use `iceberg_snapshot_properties` to attach application data to each new snapshot:
+
+```sql
+SET SESSION iceberg_snapshot_properties = '{"application.transaction-id":"txn-001"}';
+INSERT INTO my_catalog.my_schema.my_table VALUES (42);
+RESET iceberg_snapshot_properties;
+```
+
+The setting belongs to one connection. Its default is `'{}'`. Each `SET` replaces the complete map. `RESET` clears the map. `SET GLOBAL` is rejected. `COMMIT` and `ROLLBACK` do not clear the setting. If you use a connection pool, reset the setting before you return the connection to the pool, including after an error.
+
+The value must be a JSON object with string values. SQL `NULL`, invalid JSON, other JSON types, non-string values, and duplicate keys are rejected. Names are case-sensitive. For example, `Tag` and `tag` are distinct keys. The extension reserves `operation` and all keys in its snapshot metric registry, including metrics that are absent from the current write. A failed `SET` leaves the previous value unchanged.
+
+Each write copies the current properties when it registers a pending snapshot during execution. A prepared statement uses the setting at `EXECUTE`. Later `SET` or `RESET` statements do not change pending snapshots. Two writes in one transaction can use different maps. DuckDB v1.5.6 returns commit conflicts to the application. For an application retry, set the original properties again before you execute the new write.
+
+The properties and generated metrics are published in the same snapshot summary. They apply to `INSERT`, `UPDATE`, `DELETE`, `MERGE`, and `CREATE TABLE AS`. They also apply to `COPY ... (FORMAT ICEBERG)`. COPY publishes its table during finalization, so a later SQL rollback does not remove it. Reads, metadata-only operations, and writes that create no snapshot do not publish properties. New snapshots do not inherit custom properties from their parent.
+
+These properties do not provide automatic deduplication. If a commit result is unknown, the application must inspect snapshot history before it decides to repeat a write.
+
 ## Documentation
 
 See the [Iceberg page in the DuckDB documentation](https://duckdb.org/docs/extensions/iceberg).

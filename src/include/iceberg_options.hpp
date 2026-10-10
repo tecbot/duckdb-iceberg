@@ -5,6 +5,8 @@
 
 namespace duckdb {
 
+static string SNAPSHOT_PROPERTIES_CONFIG_VARIABLE = "iceberg_snapshot_properties";
+
 static string VERSION_GUESSING_CONFIG_VARIABLE = "unsafe_enable_version_guessing";
 
 // Compatibility escape hatch for deletion-vector files written by DuckDB Iceberg 1.5.3,

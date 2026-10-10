@@ -29,12 +29,14 @@ public:
 	void CreateUpdate(DatabaseInstance &db, ClientContext &context, IcebergCommitState &commit_state) const override;
 	const vector<IcebergManifestListEntry> &GetManifestFiles() const;
 	void AddManifestFile(IcebergManifestListEntry &&manifest_file);
+	void SetSnapshotProperties(unordered_map<string, string> properties);
 
 public:
 	IcebergManifestDeletes altered_manifests;
 
 private:
 	vector<IcebergManifestListEntry> manifest_files;
+	unordered_map<string, string> snapshot_properties;
 	int32_t schema_id;
 	IcebergSnapshotOperationType operation;
 };

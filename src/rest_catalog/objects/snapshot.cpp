@@ -33,23 +33,23 @@ string Snapshot::Object2::TryFromJSON(yyjson_val *obj) {
 		return "Object2 required property 'operation' is missing";
 	} else {
 		if (yyjson_is_str(operation_val)) {
-			operation = yyjson_get_str(operation_val);
+			operation = string(yyjson_get_str(operation_val), yyjson_get_len(operation_val));
 		} else {
 			return StringUtil::Format("Object2 property 'operation' is not of type 'string', found '%s' instead",
 			                          yyjson_get_type_desc(operation_val));
 		}
 	}
-	case_insensitive_set_t handled_properties {"operation"};
+	unordered_set<string> handled_properties {"operation"};
 	size_t idx, max;
 	yyjson_val *key, *val;
 	yyjson_obj_foreach(obj, idx, max, key, val) {
-		auto key_str = yyjson_get_str(key);
+		string key_str(yyjson_get_str(key), yyjson_get_len(key));
 		if (handled_properties.count(key_str)) {
 			continue;
 		}
 		string tmp;
 		if (yyjson_is_str(val)) {
-			tmp = yyjson_get_str(val);
+			tmp = string(yyjson_get_str(val), yyjson_get_len(val));
 		} else {
 			return StringUtil::Format("Object2 property 'tmp' is not of type 'string', found '%s' instead",
 			                          yyjson_get_type_desc(val));

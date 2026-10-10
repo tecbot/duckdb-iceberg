@@ -1,0 +1,100 @@
+# name: test/sql/copy/copy_snapshot_properties.test
+# description: COPY publishes custom properties with metrics and preserves them through metadata serialization
+# group: [copy]
+
+require avro
+
+require parquet
+
+require iceberg
+
+require httpfs
+
+require json
+
+statement ok
+set iceberg_snapshot_properties = '{"application.transaction-id":"txn-001","Tag":"upper","tag":"lower","Operation":"custom","Total-Records":"custom","unicode":"\u00e4","":"","nul":"a\u0000b"}';
+
+statement ok
+begin;
+
+statement ok
+copy (select 42 as id) to '__TEST_DIR__/copy_properties' (format iceberg);
+
+statement ok
+reset iceberg_snapshot_properties;
+
+# COPY publishes during finalization. SQL rollback does not remove its table.
+statement ok
+rollback;
+
+query TTTTTTTI
+select
+ content::JSON->'snapshots'->0->'summary'->>'application.transaction-id',
+ content::JSON->'snapshots'->0->'summary'->>'Tag',
+ content::JSON->'snapshots'->0->'summary'->>'tag',
+ content::JSON->'snapshots'->0->'summary'->>'Operation',
+ content::JSON->'snapshots'->0->'summary'->>'Total-Records',
+ content::JSON->'snapshots'->0->'summary'->>'operation',
+ content::JSON->'snapshots'->0->'summary'->>'total-records',
+ json_array_length(content::JSON->'snapshots')
+from read_text('__TEST_DIR__/copy_properties/metadata/*.metadata.json');
+----
+txn-001	upper	lower	custom	custom	append	1	1
+
+query III
+select length(content::JSON->'snapshots'->0->'summary'->>'unicode'),
+       json_extract_string(content::JSON, '/snapshots/0/summary/') = '',
+       length(content::JSON->'snapshots'->0->'summary'->>'nul')
+from read_text('__TEST_DIR__/copy_properties/metadata/*.metadata.json');
+----
+1	true	3
+
+statement ok
+copy (select 7 as id) to '__TEST_DIR__/copy_properties_reset' (format iceberg);
+
+query I
+select (content::JSON->'snapshots'->0->'summary'->>'application.transaction-id') is null
+from read_text('__TEST_DIR__/copy_properties_reset/metadata/*.metadata.json');
+----
+true
+
+statement ok
+set iceberg_snapshot_properties = '{"application.transaction-id":"empty"}';
+
+statement ok
+copy (select 7 as id where false) to '__TEST_DIR__/copy_properties_empty' (format iceberg);
+
+query I
+select json_array_length(content::JSON->'snapshots')
+from read_text('__TEST_DIR__/copy_properties_empty/metadata/*.metadata.json');
+----
+0
+
+statement ok
+reset iceberg_snapshot_properties;
+
+# A prepared COPY captures properties at execution.
+statement ok
+set iceberg_snapshot_properties = '{"application.transaction-id":"prepare"}';
+
+statement ok
+prepare prepared_copy_properties as
+copy (select 3 as id) to '__TEST_DIR__/copy_properties_prepared' (format iceberg);
+
+statement ok
+set iceberg_snapshot_properties = '{"application.transaction-id":"execute"}';
+
+statement ok
+execute prepared_copy_properties;
+
+query TII
+select content::JSON->'snapshots'->0->'summary'->>'application.transaction-id',
+       content::JSON->>'format-version',
+       content::JSON->'snapshots'->0->>'added-rows'
+from read_text('__TEST_DIR__/copy_properties_prepared/metadata/*.metadata.json');
+----
+execute	2	NULL
+
+statement ok
+reset iceberg_snapshot_properties;

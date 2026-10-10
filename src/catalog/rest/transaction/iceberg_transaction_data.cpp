@@ -1,4 +1,5 @@
 #include "catalog/rest/transaction/iceberg_transaction_data.hpp"
+#include "common/iceberg_snapshot_properties.hpp"
 
 #include "duckdb/common/multi_file/multi_file_reader.hpp"
 #include "duckdb/common/types/uuid.hpp"
@@ -102,6 +103,7 @@ void IcebergTransactionData::AddSnapshot(IcebergSnapshotOperationType operation,
 	                                                manifest_content_type, std::move(data_files), next_row_id);
 
 	auto add_snapshot = make_uniq<IcebergAddSnapshot>(table_info, operation);
+	add_snapshot->SetSnapshotProperties(IcebergSnapshotProperties::Get(context));
 	add_snapshot->AddManifestFile(std::move(manifest_file));
 	// make sure we are still inserting into the current schema
 	if (table_metadata.has_current_snapshot) {
@@ -139,6 +141,7 @@ void IcebergTransactionData::AddUpdateSnapshot(vector<IcebergManifestEntry> &&de
 	    next_row_id);
 
 	auto add_snapshot = make_uniq<IcebergAddSnapshot>(table_info);
+	add_snapshot->SetSnapshotProperties(IcebergSnapshotProperties::Get(context));
 	add_snapshot->AddManifestFile(std::move(delete_manifest_file));
 	add_snapshot->AddManifestFile(std::move(data_manifest_file));
 	add_snapshot->altered_manifests = std::move(altered_manifests);
