@@ -201,7 +201,7 @@ def publish():
         )
     )
     tag = os.environ["GITHUB_REF_NAME"]
-    expected_tag = f"iceberg-snapshot-properties-duckdb-{TARGET['duckdb_version'].removeprefix('v')}-v1"
+    expected_tag = f"iceberg-snapshot-properties-duckdb-{TARGET['duckdb_version'].removeprefix('v')}-v{TARGET['release_revision']}"
     assert tag == expected_tag, tag
     assert git("rev-list", "-n", "1", tag) == commit
     notes = ASSETS.parent / "release-notes.md"

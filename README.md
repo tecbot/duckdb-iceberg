@@ -38,7 +38,7 @@ LOAD '/absolute/path/to/avro.duckdb_extension';
 LOAD '/absolute/path/to/iceberg.duckdb_extension';
 ```
 
-Use the release workflow to build and test both platforms. Push a tag in the form `iceberg-snapshot-properties-duckdb-<version>-v1` from the branch that holds the matching `.github/release-target.json`. The workflow verifies file loading, SQL behavior, REST writes, engine identity, and checksums before it creates the GitHub release. It uses Python 3.14.
+Use the release workflow to build and test both platforms. Push a tag in the form `iceberg-snapshot-properties-duckdb-<version>-v<release_revision>` from the branch that holds the matching `.github/release-target.json`. The workflow verifies file loading, SQL behavior, REST writes, engine identity, and checksums before it creates the GitHub release. It uses Python 3.14.
 
 ## Development setup
 
