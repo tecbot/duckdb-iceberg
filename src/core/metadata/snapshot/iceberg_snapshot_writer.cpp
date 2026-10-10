@@ -30,12 +30,14 @@ IcebergSnapshotWriter::IcebergSnapshotWriter(ClientContext &context, const Icebe
                                              int32_t schema_id, IcebergSnapshotOperationType operation,
                                              sequence_number_t sequence_number, IcebergRowIdAllocator &row_ids,
                                              vector<string> &created_metadata_files,
+                                             const unordered_map<string, string> &snapshot_properties,
                                              optional_ptr<const IcebergSnapshot> parent)
     : context(context), table_metadata(table_metadata), db(DatabaseInstance::GetDatabase(context)),
       avro_copy(IcebergUtils::GetCopyFunction(context, "avro").function),
       created_metadata_files(created_metadata_files),
       snapshot(CreateSnapshot(context, table_metadata, schema_id, operation, sequence_number, parent)),
       manifest_list(snapshot.manifest_list), row_ids(row_ids) {
+	snapshot.custom_properties = snapshot_properties;
 }
 
 void IcebergSnapshotWriter::AddExistingManifest(IcebergManifestListEntry manifest) {

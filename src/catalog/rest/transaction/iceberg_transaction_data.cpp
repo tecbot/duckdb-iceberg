@@ -1,6 +1,7 @@
 #include "catalog/rest/transaction/iceberg_transaction_data.hpp"
 
 #include "catalog/rest/transaction/iceberg_transaction.hpp"
+#include "common/iceberg_snapshot_properties.hpp"
 
 #include "duckdb/common/multi_file/multi_file_reader.hpp"
 #include "duckdb/common/types/uuid.hpp"
@@ -224,6 +225,7 @@ void IcebergTransactionData::AddPendingDeleteManifests(IcebergAddSnapshot &add_s
 
 void IcebergTransactionData::AddSnapshotUpdate(unique_ptr<IcebergAddSnapshot> add_snapshot,
                                                IcebergManifestDeletes &&altered_manifests) {
+	add_snapshot->SetSnapshotProperties(IcebergSnapshotProperties::Get(context));
 	auto versioned_deletes = manifest_deletes.AtVersion(alters.size());
 	if (versioned_deletes.Merge(std::move(altered_manifests))) {
 		add_snapshot->SetManifestDeletes(std::move(versioned_deletes));

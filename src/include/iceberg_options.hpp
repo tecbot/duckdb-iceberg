@@ -7,6 +7,8 @@
 
 namespace duckdb {
 
+static constexpr const char *SNAPSHOT_PROPERTIES_CONFIG_VARIABLE = "iceberg_snapshot_properties";
+
 static constexpr const char *VERSION_GUESSING_CONFIG_VARIABLE = "unsafe_enable_version_guessing";
 
 // The Iceberg format version used when creating a new table without an explicit
