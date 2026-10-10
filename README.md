@@ -27,6 +27,19 @@ The properties and generated metrics are published in the same snapshot summary.
 
 These properties do not provide automatic deduplication. If a commit result is unknown, the application must inspect snapshot history before it decides to repeat a write.
 
+## Fork releases
+
+Download the binary for your DuckDB version and platform from [GitHub Releases](https://github.com/tecbot/duckdb-iceberg/releases). The release includes Linux AMD64 and macOS ARM64 binaries, `SHA256SUMS`, and platform JSON files with the source commits. Linux binaries require glibc 2.28 or later. The 2.0 development binary requires the exact engine commit stated in its release.
+
+Verify the checksums. Enable `allow_unsigned_extensions` when you start DuckDB. For the DuckDB CLI, use `duckdb -unsigned`. Load the bundled Avro file for the same platform, then load the Iceberg file:
+
+```sql
+LOAD '/absolute/path/to/avro.duckdb_extension';
+LOAD '/absolute/path/to/iceberg.duckdb_extension';
+```
+
+Use the release workflow to build and test both platforms. Push a tag in the form `iceberg-snapshot-properties-duckdb-<version>-v1` from the branch that holds the matching `.github/release-target.json`. The workflow verifies file loading, SQL behavior, REST writes, engine identity, and checksums before it creates the GitHub release. It uses Python 3.14.
+
 ## Development setup
 
 Clone the repository with its DuckDB and extension tooling submodules:

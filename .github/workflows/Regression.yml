@@ -16,8 +16,7 @@ on:
         type: string
   repository_dispatch:
   push:
-    branches-ignore:
-      - 'main'
+    branches: [v1.5-variegata]
   pull_request:
     types: [opened, reopened, ready_for_review, converted_to_draft, synchronize]
 

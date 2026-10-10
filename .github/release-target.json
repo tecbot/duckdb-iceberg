@@ -1,0 +1,11 @@
+{
+  "duckdb_version": "v2.0.0-dev86877",
+  "duckdb_commit": "26e63077ac75b8221f905e49154f6e6cfd0b0a9e",
+  "catalog": "mock",
+  "catalog_tests": [
+    "test_snapshot_properties.test",
+    "test_snapshot_properties_operations.test",
+    "test_snapshot_properties_retry.test"
+  ],
+  "prerelease": true
+}
