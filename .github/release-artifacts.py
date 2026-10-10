@@ -1,6 +1,7 @@
 """Verify and publish native Iceberg artifacts using Python 3.14."""
 
 import hashlib
+import io
 import json
 import os
 from pathlib import Path
@@ -8,6 +9,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tarfile
 import tempfile
 import time
 import urllib.error
@@ -180,6 +182,45 @@ def package():
     ]
     (ASSETS / f"{platform}.json").write_text(json.dumps(manifest, indent=2) + "\n")
 
+    bundle()
+
+
+def bundle():
+    for manifest_path in sorted(ASSETS.glob("*.json")):
+        manifest = json.loads(manifest_path.read_text())
+        assert manifest["duckdb_version"] == TARGET["duckdb_version"]
+        assert manifest["duckdb_commit"] == TARGET["duckdb_commit"]
+        assert manifest["platform"] in PLATFORMS
+        entries = [manifest, *manifest["dependencies"]]
+        paths = []
+        for item in entries:
+            path = ASSETS / item["file"]
+            assert path.name == item["file"]
+            assert hashlib.sha256(path.read_bytes()).hexdigest() == item["sha256"]
+            paths.append(path)
+        archive_manifest = json.loads(json.dumps(manifest))
+        archive_manifest["packaging_commit"] = git("rev-parse", "HEAD")
+        archive_manifest["file"] = "iceberg.duckdb_extension"
+        assert len(archive_manifest["dependencies"]) == 1
+        archive_manifest["dependencies"][0]["file"] = "avro.duckdb_extension"
+        archive = (
+            ASSETS
+            / f"iceberg-{manifest['duckdb_version']}-{manifest['platform']}.tar.gz"
+        )
+        data = (json.dumps(archive_manifest, indent=2) + "\n").encode()
+        with tarfile.open(archive, "w:gz") as output:
+            output.add(paths[0], arcname="iceberg.duckdb_extension")
+            output.add(paths[1], arcname="avro.duckdb_extension")
+            info = tarfile.TarInfo("manifest.json")
+            info.size = len(data)
+            output.addfile(info, io.BytesIO(data))
+        with tarfile.open(archive, "r:gz") as output:
+            for item in [archive_manifest, *archive_manifest["dependencies"]]:
+                assert (
+                    hashlib.sha256(output.extractfile(item["file"]).read()).hexdigest()
+                    == item["sha256"]
+                )
+
 
 def publish():
     manifests = [json.loads(path.read_text()) for path in ASSETS.glob("*.json")]
@@ -218,7 +259,8 @@ def publish():
         f"Extension source: `{commit}`.\n\n"
         "Platforms: Linux AMD64 (glibc 2.28 or later) and macOS ARM64.\n"
         "The binaries are unsigned. Enable `allow_unsigned_extensions` when you start DuckDB. "
-        "Load the file that matches your runtime and platform. Load the bundled Avro file for the same platform before you load Iceberg. "
+        "Download and extract the platform archive. It contains `avro.duckdb_extension`, `iceberg.duckdb_extension`, and `manifest.json`. Load the extracted Avro file before you load Iceberg. "
+        "DuckDB requires these canonical file names to find the extension entry points. If you download the separate binaries, rename them before you load them. "
         "Verify the files with `SHA256SUMS`. Platform JSON files record the source commits and binary hashes.\n\n"
         'Use `SET SESSION iceberg_snapshot_properties = \'{"application.transaction-id":"txn-001"}\';` '
         "before a write. Use `RESET iceberg_snapshot_properties;` to clear the setting. "
@@ -249,6 +291,10 @@ def publish():
 
 if __name__ == "__main__":
     os.chdir(ROOT)
-    {"verify": verify, "catalog": catalog, "package": package, "publish": publish}[
-        sys.argv[1]
-    ]()
+    {
+        "verify": verify,
+        "catalog": catalog,
+        "package": package,
+        "bundle": bundle,
+        "publish": publish,
+    }[sys.argv[1]]()
