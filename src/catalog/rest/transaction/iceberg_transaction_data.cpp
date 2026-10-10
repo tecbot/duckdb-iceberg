@@ -201,9 +201,11 @@ void IcebergTransactionData::AddSnapshot(IcebergSnapshotOperationType operation,
 		                              static_cast<uint8_t>(operation));
 	};
 
-	auto manifest_metadata = IcebergManifestMetadata::FromTableMetadata(table_metadata, manifest_content_type);
 	auto add_snapshot = make_uniq<IcebergAddSnapshot>(table_info, operation);
-	add_snapshot->AddPendingManifest(IcebergPendingManifest(manifest_metadata, std::move(data_files)));
+	if (!data_files.empty()) {
+		auto manifest_metadata = IcebergManifestMetadata::FromTableMetadata(table_metadata, manifest_content_type);
+		add_snapshot->AddPendingManifest(IcebergPendingManifest(manifest_metadata, std::move(data_files)));
+	}
 	// make sure we are still inserting into the current schema
 	if (table_metadata.current_snapshot_id) {
 		TableAddAssertCurrentSchemaId();

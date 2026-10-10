@@ -254,6 +254,9 @@ def publish():
     notes.write_text(
         f"This release adds custom snapshot summary properties. It addresses "
         f"[duckdb/duckdb-iceberg#1249](https://github.com/duckdb/duckdb-iceberg/issues/1249).\n\n"
+        "This revision makes every INSERT create an append snapshot, including an INSERT that produces zero rows. "
+        "Empty appends capture the session snapshot properties, write a new manifest list without new data files, "
+        "and use the normal append conflict policy. COMMIT publishes pending snapshots; ROLLBACK discards them.\n\n"
         f"DuckDB runtime: `{TARGET['duckdb_version']}`.\n"
         f"DuckDB source: `{TARGET['duckdb_commit']}`.\n"
         f"Extension source: `{commit}`.\n\n"

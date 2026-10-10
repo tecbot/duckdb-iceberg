@@ -105,3 +105,75 @@ def test_foreign_properties_survive_duckdb_metadata_copy(
         assert original["Total-Records"] == "opaque"
     finally:
         rest_catalog.drop_table(f"default.{name}")
+
+
+@pytest.mark.requires_spark(">=4.0")
+@pytest.mark.parametrize(
+    "format_version",
+    [2, pytest.param(3, marks=pytest.mark.requires_capabilities("format_v3"))],
+)
+def test_empty_insert_matches_spark_append(
+    format_version, rest_catalog, spark_con, unittest_binary, unittest_test_config, print_unittest_stdin
+):
+    name = "empty_append_" + uuid4().hex
+    created = False
+    try:
+        with DuckDBUnittestRunner(
+            unittest_binary, test_config=unittest_test_config, print_stdin=print_unittest_stdin
+        ) as test:
+            test.statement_ok("set session iceberg_use_metadata_log = false")
+            test.statement_ok(
+                f"create table my_datalake.default.{name} (id integer) " f"with ('format-version' = {format_version})"
+            )
+            test.statement_ok(f"insert into my_datalake.default.{name} select 0 where false")
+            test.statement_ok(f"insert into my_datalake.default.{name} values (42)")
+            test.statement_ok("set iceberg_snapshot_properties = '{\"application.transaction-id\":\"empty\"}'")
+            test.statement_ok(f"insert into my_datalake.default.{name} select 0 where false")
+            test.statement_ok("reset iceberg_snapshot_properties")
+            test.query("I", f"select id from my_datalake.default.{name}", [(42,)])
+        created = True
+
+        table = rest_catalog.load_table(f"default.{name}")
+        snapshots = table.snapshots()
+        assert len(snapshots) == 3
+        first, populated, empty = snapshots
+        assert first.parent_snapshot_id is None
+        assert empty.parent_snapshot_id == populated.snapshot_id
+        assert empty.sequence_number == populated.sequence_number + 1
+        assert len({snapshot.manifest_list for snapshot in snapshots}) == 3
+        assert first.manifests(table.io) == []
+        assert len(empty.manifests(table.io)) == 1
+        assert empty.summary.operation.value == "append"
+        assert empty.summary.additional_properties["application.transaction-id"] == "empty"
+        assert empty.summary.additional_properties["total-records"] == "1"
+        for key in ["added-records", "added-data-files"]:
+            assert int(empty.summary.additional_properties.get(key, "0")) == 0
+        assert table.scan().to_arrow().to_pylist() == [{"id": 42}]
+
+        spark_rows = spark_con.sql(f"select id from default.{name}").collect()
+        assert [row.id for row in spark_rows] == [42]
+        spark_summary = (
+            spark_con.sql(f"select summary from default.{name}.snapshots where snapshot_id = {empty.snapshot_id}")
+            .first()
+            .summary
+        )
+        assert spark_summary["application.transaction-id"] == "empty"
+
+        # The reference writer must also publish an append when its input is empty.
+        spark_con.sql(f"select id from default.{name} where false").writeTo(f"default.{name}").append()
+        table.refresh()
+        reference = table.current_snapshot()
+        assert len(table.snapshots()) == 4
+        assert reference.parent_snapshot_id == empty.snapshot_id
+        assert reference.manifest_list != empty.manifest_list
+        assert reference.summary.operation.value == empty.summary.operation.value
+        assert reference.summary.additional_properties["total-records"] == "1"
+        assert table.scan().to_arrow().to_pylist() == [{"id": 42}]
+        if format_version == 3:
+            assert first.added_rows == empty.added_rows == reference.added_rows == 0
+            assert first.first_row_id == 0
+            assert empty.first_row_id == reference.first_row_id == 1
+            assert table.metadata.next_row_id == 1
+    finally:
+        if created:
+            rest_catalog.drop_table(f"default.{name}")

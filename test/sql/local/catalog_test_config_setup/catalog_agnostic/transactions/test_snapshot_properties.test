@@ -149,7 +149,7 @@ select summary->>'application.transaction-id' is null from property_summaries wh
 ----
 true
 
-# Metadata-only writes, reads, and empty INSERT/UPDATE retain the snapshot count.
+# Empty INSERT creates a snapshot; metadata-only writes and empty UPDATE do not.
 statement ok
 alter table my_datalake.default.snapshot_properties add column payload varchar;
 
@@ -162,7 +162,7 @@ update my_datalake.default.snapshot_properties set id = 0 where id + random() < 
 query I
 select count(*) from property_summaries;
 ----
-7
+8
 
 statement ok
 reset iceberg_snapshot_properties;

@@ -5,8 +5,11 @@
   "catalog_tests": [
     "test_snapshot_properties.test",
     "test_snapshot_properties_operations.test",
-    "test_snapshot_properties_retry.test"
+    "test_snapshot_properties_retry.test",
+    "test_empty_insert.test",
+    "test_empty_insert_v3.test",
+    "test_empty_insert_retry.test"
   ],
   "prerelease": true,
-  "release_revision": 4
+  "release_revision": 5
 }

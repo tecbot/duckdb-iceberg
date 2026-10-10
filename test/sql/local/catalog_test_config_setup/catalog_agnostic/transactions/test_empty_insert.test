@@ -1,0 +1,214 @@
+# name: test/sql/local/catalog_test_config_setup/catalog_agnostic/transactions/test_empty_insert.test
+# description: Empty INSERT creates an append snapshot without new data files and captures execution properties
+# group: [transactions]
+
+require-env CATALOG_TEST_CONFIG_SETUP
+
+include test/sql/init_requires
+
+require json
+
+statement ok
+set session iceberg_use_metadata_log = false;
+
+statement ok
+drop table if exists my_datalake.default.empty_insert;
+
+statement ok
+create table my_datalake.default.empty_insert (id integer);
+
+statement ok
+set iceberg_snapshot_properties = '{"application.transaction-id":"prepare"}';
+
+statement ok
+prepare empty_append as insert into my_datalake.default.empty_insert select 0 where false;
+
+# Preparing an empty append does not create a snapshot.
+query I
+select count(*) from iceberg_snapshots(my_datalake.default.empty_insert);
+----
+0
+
+statement ok
+set iceberg_snapshot_properties = '{"application.transaction-id":"execute"}';
+
+query I
+execute empty_append;
+----
+0
+
+statement ok
+reset iceberg_snapshot_properties;
+
+statement ok
+create temp view empty_insert_snapshots as
+select snap->>'sequence-number' as seq,
+       snap->>'snapshot-id' as id,
+       snap->>'parent-snapshot-id' as parent,
+       snap->>'manifest-list' as manifest_list,
+       snap->'summary' as summary
+from (
+ select unnest(json_extract(metadata::JSON, '$.snapshots[*]')) as snap
+ from iceberg_load_table_response(my_datalake.default.empty_insert)
+);
+
+query ITTTIII
+select seq::BIGINT, parent, summary->>'operation', summary->>'application.transaction-id',
+       (summary->>'total-records')::BIGINT,
+       coalesce((summary->>'added-records')::BIGINT, 0),
+       coalesce((summary->>'added-data-files')::BIGINT, 0)
+from empty_insert_snapshots;
+----
+1	NULL	append	execute	0	0	0
+
+query II
+select (select count(*) from my_datalake.default.empty_insert),
+       (select count(*) from iceberg_metadata(my_datalake.default.empty_insert));
+----
+0	0
+
+statement ok
+insert into my_datalake.default.empty_insert values (42);
+
+# The input becomes empty during execution rather than constant folding.
+statement ok
+begin;
+
+statement ok
+set iceberg_snapshot_properties = '{"application.transaction-id":"runtime-empty"}';
+
+query I
+insert into my_datalake.default.empty_insert select id from my_datalake.default.empty_insert where id + random() < -100;
+----
+0
+
+statement ok
+reset iceberg_snapshot_properties;
+
+statement ok
+commit;
+
+query ITTIII
+select seq::BIGINT, summary->>'operation', summary->>'application.transaction-id',
+       (summary->>'total-records')::BIGINT,
+       coalesce((summary->>'added-records')::BIGINT, 0),
+       coalesce((summary->>'added-data-files')::BIGINT, 0)
+from empty_insert_snapshots where seq = '3';
+----
+3	append	runtime-empty	1	0	0
+
+query II
+select (select count(*) from my_datalake.default.empty_insert),
+       (select count(*) from iceberg_metadata(my_datalake.default.empty_insert));
+----
+1	1
+
+statement ok
+begin;
+
+statement ok
+insert into my_datalake.default.empty_insert select 0 where false;
+
+statement ok
+rollback;
+
+query I
+select count(*) from empty_insert_snapshots;
+----
+3
+
+# Each statement creates its own snapshot and captures its own properties.
+statement ok
+begin;
+
+statement ok
+set iceberg_snapshot_properties = '{"application.transaction-id":"four"}';
+
+statement ok
+execute empty_append;
+
+statement ok
+set iceberg_snapshot_properties = '{"application.transaction-id":"five"}';
+
+statement ok
+insert into my_datalake.default.empty_insert select 0 where false;
+
+statement ok
+reset iceberg_snapshot_properties;
+
+statement ok
+commit;
+
+query IT
+select seq::BIGINT, summary->>'application.transaction-id'
+from empty_insert_snapshots where seq::BIGINT >= 4 order by seq::BIGINT;
+----
+4	four
+5	five
+
+# Empty INSERT creates a snapshot even without snapshot properties.
+statement ok
+insert into my_datalake.default.empty_insert select 0 where false;
+
+query I
+select summary->>'application.transaction-id' is null from empty_insert_snapshots where seq = '6';
+----
+true
+
+# Every snapshot gets a distinct manifest list and follows the preceding head.
+query III
+select count(*), count(distinct current.manifest_list),
+       count(*) filter (where current.seq::BIGINT > 1 and current.parent = previous.id)
+from empty_insert_snapshots current
+left join empty_insert_snapshots previous on current.seq::BIGINT = previous.seq::BIGINT + 1;
+----
+6	6	5
+
+statement ok
+delete from my_datalake.default.empty_insert where false;
+
+statement ok
+update my_datalake.default.empty_insert set id = 0 where id + random() < -100;
+
+query II
+select (select count(*) from empty_insert_snapshots), (select id from my_datalake.default.empty_insert);
+----
+6	42
+
+statement ok
+drop table my_datalake.default.empty_insert;
+
+# Partitioned appends also avoid writing empty data files.
+statement ok
+drop table if exists my_datalake.default.empty_insert_partitioned;
+
+statement ok
+create table my_datalake.default.empty_insert_partitioned (id integer) partitioned by (id);
+
+statement ok
+insert into my_datalake.default.empty_insert_partitioned select 0 where false;
+
+query II
+select (select count(*) from iceberg_snapshots(my_datalake.default.empty_insert_partitioned)),
+       (select count(*) from iceberg_metadata(my_datalake.default.empty_insert_partitioned));
+----
+1	0
+
+statement ok
+insert into my_datalake.default.empty_insert_partitioned values (42);
+
+statement ok
+insert into my_datalake.default.empty_insert_partitioned select 0 where false;
+
+query III
+select (select count(*) from iceberg_snapshots(my_datalake.default.empty_insert_partitioned)),
+       (select count(*) from iceberg_metadata(my_datalake.default.empty_insert_partitioned)),
+       (select id from my_datalake.default.empty_insert_partitioned);
+----
+3	1	42
+
+statement ok
+drop table my_datalake.default.empty_insert_partitioned;
+
+statement ok
+reset session iceberg_use_metadata_log;

@@ -25,6 +25,8 @@ Each write copies the current properties when it registers a pending snapshot du
 
 The properties and generated metrics are published in the same snapshot summary. They apply to `INSERT`, `UPDATE`, `DELETE`, `MERGE`, `CREATE TABLE AS`, and maintenance actions that create snapshots. They also apply to `COPY ... (FORMAT ICEBERG)`. COPY publishes its table during finalization, so a later SQL rollback does not remove it. Reads, metadata-only operations, and writes that create no snapshot do not publish properties. New snapshots do not inherit custom properties from their parent.
 
+Each `INSERT` creates an append snapshot, including an INSERT that produces zero rows. An empty append writes a new manifest list without adding data files. It does not create an empty manifest. It captures the current snapshot properties and uses the normal append conflict policy. In an explicit transaction, `COMMIT` publishes the snapshot and `ROLLBACK` discards it. Zero-row UPDATE and DELETE operations do not create a snapshot.
+
 These properties do not provide automatic deduplication. If a commit result is unknown, the application must inspect snapshot history before it decides to repeat a write.
 
 ## Fork releases
