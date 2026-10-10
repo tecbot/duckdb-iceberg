@@ -52,6 +52,18 @@ jobs:
           "$RUNNER_TEMP/iceberg-vcpkg/bootstrap-vcpkg.sh" -disableMetrics
           export VCPKG_TOOLCHAIN_PATH="$RUNNER_TEMP/iceberg-vcpkg/scripts/buildsystems/vcpkg.cmake"
           bash .github/release-build.sh
+      - name: Preserve compiled runtime for diagnostics
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-${{ matrix.platform }}
+          path: |
+            build/release/duckdb
+            build/release/test/unittest
+            build/release/src/libduckdb.*
+            build/release/extension/**/*.duckdb_extension
+            build/release/repository/**
+          if-no-files-found: error
+          retention-days: 7
       - name: Verify file loading and run SQL tests
         run: python .github/release-artifacts.py verify
       - name: Test REST snapshot operations
