@@ -37,6 +37,7 @@ jobs:
       - name: Build on Linux
         if: runner.os == 'Linux'
         run: |
+          mkdir -p build/release-assets
           docker build -f .github/release.Dockerfile -t iceberg-release .
           docker run --rm -v "$PWD:$PWD" -w "$PWD" \
             -e GEN -e CMAKE_BUILD_PARALLEL_LEVEL -e VCPKG_MAX_CONCURRENCY \
