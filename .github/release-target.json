@@ -8,5 +8,6 @@
     "test_snapshot_properties_operations_v3.test",
     "test_snapshot_properties_conflict.test"
   ],
-  "prerelease": false
+  "prerelease": false,
+  "release_revision": 2
 }
