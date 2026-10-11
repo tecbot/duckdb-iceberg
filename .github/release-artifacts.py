@@ -19,7 +19,7 @@ ROOT = Path(__file__).resolve().parents[1]
 BUILD = ROOT / "build/release"
 ASSETS = ROOT / "build/release-assets"
 TARGET = json.loads((ROOT / ".github/release-target.json").read_text())
-PLATFORMS = {"linux_amd64", "osx_arm64"}
+PLATFORMS = {"linux_amd64", "linux_arm64", "osx_arm64"}
 
 
 def run(*args, **kwargs):
@@ -224,7 +224,7 @@ def bundle():
 
 def publish():
     manifests = [json.loads(path.read_text()) for path in ASSETS.glob("*.json")]
-    assert len(manifests) == 2
+    assert len(manifests) == len(PLATFORMS)
     assert {item["platform"] for item in manifests} == PLATFORMS
     commit = git("rev-parse", "HEAD")
     for item in manifests:
@@ -254,13 +254,14 @@ def publish():
     notes.write_text(
         f"This release adds custom snapshot summary properties. It addresses "
         f"[duckdb/duckdb-iceberg#1249](https://github.com/duckdb/duckdb-iceberg/issues/1249).\n\n"
-        "This revision makes every INSERT create an append snapshot, including an INSERT that produces zero rows. "
+        "This revision adds native Linux ARM64 binaries.\n\n"
+        "Every INSERT creates an append snapshot, including an INSERT that produces zero rows. "
         "Empty appends capture the session snapshot properties, write a new manifest list without new data files, "
         "and use the normal append conflict policy. COMMIT publishes pending snapshots; ROLLBACK discards them.\n\n"
         f"DuckDB runtime: `{TARGET['duckdb_version']}`.\n"
         f"DuckDB source: `{TARGET['duckdb_commit']}`.\n"
         f"Extension source: `{commit}`.\n\n"
-        "Platforms: Linux AMD64 (glibc 2.28 or later) and macOS ARM64.\n"
+        "Platforms: Linux AMD64 and ARM64 (glibc 2.28 or later), and macOS ARM64.\n"
         "The binaries are unsigned. Enable `allow_unsigned_extensions` when you start DuckDB. "
         "Download and extract the platform archive. It contains `avro.duckdb_extension`, `iceberg.duckdb_extension`, and `manifest.json`. Load the extracted Avro file before you load Iceberg. "
         "DuckDB requires these canonical file names to find the extension entry points. If you download the separate binaries, rename them before you load them. "

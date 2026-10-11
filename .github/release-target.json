@@ -11,5 +11,5 @@
     "test_empty_insert_retry.test"
   ],
   "prerelease": true,
-  "release_revision": 5
+  "release_revision": 6
 }
