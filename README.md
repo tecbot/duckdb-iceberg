@@ -123,7 +123,7 @@ and their commitment to open source enabling us to share this extension with the
 
 ## Fork releases
 
-Download the platform archive for your DuckDB version and platform from [GitHub Releases](https://github.com/tecbot/duckdb-iceberg/releases). The release includes Linux AMD64 and macOS ARM64 archives and separate binaries, `SHA256SUMS`, and platform JSON files with the source commits. Linux binaries require glibc 2.28 or later. The 2.0 development binary requires the exact engine commit stated in its release.
+Download the platform archive for your DuckDB version and platform from [GitHub Releases](https://github.com/tecbot/duckdb-iceberg/releases). The release includes Linux AMD64, Linux ARM64, and macOS ARM64 archives and separate binaries, `SHA256SUMS`, and platform JSON files with the source commits. Linux binaries require glibc 2.28 or later. The 2.0 development binary requires the exact engine commit stated in its release.
 
 Verify the checksums, then extract the archive. It contains `avro.duckdb_extension`, `iceberg.duckdb_extension`, and `manifest.json`. DuckDB needs these file names to find the extension entry points. If you download the separate binaries, rename them to these names before you load them. Enable `allow_unsigned_extensions` when you start DuckDB. For the DuckDB CLI, use `duckdb -unsigned`. Load the bundled Avro file for the same platform, then load the Iceberg file:
 
@@ -132,4 +132,4 @@ LOAD '/absolute/path/to/avro.duckdb_extension';
 LOAD '/absolute/path/to/iceberg.duckdb_extension';
 ```
 
-Use the release workflow to build and test both platforms. Push a tag in the form `iceberg-snapshot-properties-duckdb-<version>-v<release_revision>` from the branch that holds the matching `.github/release-target.json`. The workflow verifies file loading, SQL behavior, REST writes, engine identity, and checksums before it creates the GitHub release. It uses Python 3.14.
+Use the release workflow to build and test all three platforms. Linux ARM64 builds run on a native ARM64 runner. Push a tag in the form `iceberg-snapshot-properties-duckdb-<version>-v<release_revision>` from the branch that holds the matching `.github/release-target.json`. The workflow verifies file loading, SQL behavior, REST writes, engine identity, and checksums before it creates the GitHub release. It uses Python 3.14.

@@ -1,4 +1,5 @@
-FROM quay.io/pypa/manylinux_2_28_x86_64
+ARG MANYLINUX_IMAGE=quay.io/pypa/manylinux_2_28_x86_64
+FROM ${MANYLINUX_IMAGE}
 ENV PATH="/opt/python/cp314-cp314/bin:${PATH}"
 RUN python --version && python -m pip install cmake==4.0.2 ninja
 RUN yum install -y git zip unzip autoconf automake libtool perl-IPC-Cmd perl-core pkgconfig
