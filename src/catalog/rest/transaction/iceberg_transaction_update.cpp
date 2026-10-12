@@ -1,5 +1,6 @@
 #include "catalog/rest/transaction/iceberg_transaction_update.hpp"
 #include "catalog/rest/transaction/iceberg_transaction.hpp"
+#include "duckdb/common/exception/transaction_exception.hpp"
 
 namespace duckdb {
 
@@ -19,7 +20,20 @@ IcebergTableInformation &IcebergTransactionAlterUpdate::GetOrInitializeTable(con
 	auto table_key = table.GetTableKey();
 	auto it = updated_tables.find(table_key);
 	if (it == updated_tables.end()) {
-		it = updated_tables.emplace(table_key, table.Copy(transaction)).first;
+		auto snapshotless = table.table_metadata.snapshots.empty();
+		auto locked_context = transaction.context.lock();
+		// Snapshotless tables bind against their resolved current schema. Do not rewind
+		// that metadata in the writer when catalog time is ahead of the session clock.
+		auto table_copy = snapshotless ? table.Copy(*locked_context) : table.Copy(transaction);
+		if (snapshotless &&
+		    (!table_copy.table_metadata.snapshots.empty() ||
+		     table_copy.latest_metadata_json != table.latest_metadata_json ||
+		     table_copy.table_metadata.GetCurrentSchemaId() != table.table_metadata.GetCurrentSchemaId() ||
+		     table_copy.table_metadata.table_uuid != table.table_metadata.table_uuid)) {
+			throw TransactionException("Table %s changed before its first write. Please restart your transaction",
+			                           table_key);
+		}
+		it = updated_tables.emplace(table_key, std::move(table_copy)).first;
 		// Preserve the table_uuid from the original table info (resolved at transaction start).
 		// Copy() reads from the global request cache, which can be contaminated by another
 		// transaction's RENAME overwriting the entry with a different table's metadata.

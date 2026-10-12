@@ -1,0 +1,303 @@
+# name: test/sql/local/catalog_test_config_setup/catalog_agnostic/transactions/test_schema_before_first_snapshot.test
+# description: Snapshotless writes keep the schema used by the binder after committed schema evolution
+# group: [transactions]
+
+require-env CATALOG_TEST_CONFIG_SETUP
+
+require avro
+
+require parquet
+
+require iceberg
+
+require httpfs
+
+require json
+
+statement ok
+set iceberg_use_metadata_log = true;
+
+# Verification reads select the committed head. All writers retain metadata-log handling.
+statement ok reader
+set iceberg_use_metadata_log = false;
+
+loop format 2 4
+
+# The original autocommit sequence must also work without reopening the connection.
+statement ok
+drop table if exists my_datalake.default.schema_first_autocommit_${format};
+
+statement ok
+create table my_datalake.default.schema_first_autocommit_${format} (id bigint, payload varchar)
+with ('format-version' = ${format});
+
+statement ok
+alter table my_datalake.default.schema_first_autocommit_${format} add column marker timestamp;
+
+query I
+merge into my_datalake.default.schema_first_autocommit_${format} as t
+using (values (8::bigint, 'autocommit', timestamp '2026-01-08')) as s(id, payload, marker)
+on t.id = s.id
+when matched then update set payload = s.payload, marker = s.marker
+when not matched then insert (id, payload, marker) values (s.id, s.payload, s.marker);
+----
+1
+
+query III reader
+select count(*), count(marker), sum(id) from my_datalake.default.schema_first_autocommit_${format};
+----
+1	1	8
+
+query ITT reader
+select id, payload, marker from my_datalake.default.schema_first_autocommit_${format} order by id;
+----
+8	autocommit	2026-01-08 00:00:00
+
+statement ok
+drop table if exists my_datalake.default.schema_first_merge_${format};
+
+statement ok
+create table my_datalake.default.schema_first_merge_${format} (id bigint, payload varchar)
+with ('format-version' = ${format});
+
+query I
+select count(*) from iceberg_snapshots(my_datalake.default.schema_first_merge_${format});
+----
+0
+
+# Start before the schema commit, but resolve the snapshotless table after that commit.
+# This forces the old writer to rewind to the two-column schema without a timed sleep.
+statement ok pending
+begin;
+
+statement ok
+alter table my_datalake.default.schema_first_merge_${format} add column marker timestamp;
+
+query I
+select count(*) from iceberg_snapshots(my_datalake.default.schema_first_merge_${format});
+----
+0
+
+statement ok pending
+set iceberg_snapshot_properties = '{"application.transaction-id":"schema-first-merge"}';
+
+query I pending
+merge into my_datalake.default.schema_first_merge_${format} as t
+using (values (1::bigint, 'a', timestamp '2026-01-01'),
+              (2::bigint, 'b', timestamp '2026-01-02')) as s(id, payload, marker)
+on t.id = s.id
+when matched then update set payload = s.payload, marker = s.marker
+when not matched then insert (id, payload, marker) values (s.id, s.payload, s.marker);
+----
+2
+
+statement ok pending
+reset iceberg_snapshot_properties;
+
+statement ok pending
+commit;
+
+query III reader
+select count(*), count(marker), sum(id) from my_datalake.default.schema_first_merge_${format};
+----
+2	2	3
+
+query ITT reader
+select id, payload, marker from my_datalake.default.schema_first_merge_${format} order by id;
+----
+1	a	2026-01-01 00:00:00
+2	b	2026-01-02 00:00:00
+
+query ITT reader
+select json_extract_string(metadata::JSON, '$.snapshots[0]."sequence-number"')::BIGINT,
+       json_extract_string(metadata::JSON, '$.snapshots[0].summary.operation'),
+       json_extract_string(metadata::JSON, '$.snapshots[0].summary."application.transaction-id"')
+from iceberg_load_table_response(my_datalake.default.schema_first_merge_${format});
+----
+1	append	schema-first-merge
+
+query III reader
+select json_extract_string(metadata::JSON, '$.snapshots[0]."schema-id"')::BIGINT = 1,
+       json_extract_string(metadata::JSON, '$.snapshots[0]."parent-snapshot-id"') is null,
+       case when ${format} = 3 then
+           json_extract_string(metadata::JSON, '$."next-row-id"')::BIGINT = 2
+           and json_extract_string(metadata::JSON, '$.snapshots[0]."first-row-id"')::BIGINT = 0
+           and json_extract_string(metadata::JSON, '$.snapshots[0]."added-rows"')::BIGINT = 2
+       else true end
+from iceberg_load_table_response(my_datalake.default.schema_first_merge_${format});
+----
+true	true	true
+
+# Ordinary INSERT must use the same resolved schema as its bound input.
+statement ok
+drop table if exists my_datalake.default.schema_first_insert_${format};
+
+statement ok
+create table my_datalake.default.schema_first_insert_${format} (id bigint, payload varchar)
+with ('format-version' = ${format});
+
+statement ok pending
+begin;
+
+statement ok
+alter table my_datalake.default.schema_first_insert_${format} add column marker timestamp;
+
+statement ok pending
+insert into my_datalake.default.schema_first_insert_${format} values (3, 'c', timestamp '2026-01-03');
+
+statement ok pending
+commit;
+
+query III reader
+select count(*), count(marker), sum(id) from my_datalake.default.schema_first_insert_${format};
+----
+1	1	3
+
+query ITT reader
+select id, payload, marker from my_datalake.default.schema_first_insert_${format} order by id;
+----
+3	c	2026-01-03 00:00:00
+
+# ALTER and MERGE in one transaction must retain their normal rollback behavior.
+statement ok
+drop table if exists my_datalake.default.schema_first_rollback_${format};
+
+statement ok
+create table my_datalake.default.schema_first_rollback_${format} (id bigint, payload varchar)
+with ('format-version' = ${format});
+
+statement ok pending
+begin;
+
+statement ok pending
+alter table my_datalake.default.schema_first_rollback_${format} add column marker timestamp;
+
+query I pending
+merge into my_datalake.default.schema_first_rollback_${format} as t
+using (values (4::bigint, 'd', timestamp '2026-01-04')) as s(id, payload, marker)
+on t.id = s.id
+when not matched then insert (id, payload, marker) values (s.id, s.payload, s.marker);
+----
+1
+
+statement ok pending
+rollback;
+
+query I reader
+select count(*) from my_datalake.default.schema_first_rollback_${format};
+----
+0
+
+query I reader
+select count(*) from iceberg_snapshots(my_datalake.default.schema_first_rollback_${format});
+----
+0
+
+statement error reader
+select marker from my_datalake.default.schema_first_rollback_${format};
+----
+<REGEX>:.*(Referenced column "marker" not found|does not have a column.*marker).*
+
+statement ok pending
+begin;
+
+statement ok pending
+alter table my_datalake.default.schema_first_rollback_${format} add column marker timestamp;
+
+query I pending
+merge into my_datalake.default.schema_first_rollback_${format} as t
+using (values (4::bigint, 'd', timestamp '2026-01-04')) as s(id, payload, marker)
+on t.id = s.id
+when not matched then insert (id, payload, marker) values (s.id, s.payload, s.marker);
+----
+1
+
+statement ok pending
+commit;
+
+query III reader
+select count(*), count(marker), sum(id) from my_datalake.default.schema_first_rollback_${format};
+----
+1	1	4
+
+query ITT reader
+select id, payload, marker from my_datalake.default.schema_first_rollback_${format} order by id;
+----
+4	d	2026-01-04 00:00:00
+
+endloop
+
+# A compatible nullable column must not corrupt a transaction's existing write view.
+statement ok
+drop table if exists my_datalake.default.schema_first_conflict;
+
+statement ok
+create table my_datalake.default.schema_first_conflict (id bigint, payload varchar);
+
+statement ok pending
+begin;
+
+query I pending
+select count(*) from my_datalake.default.schema_first_conflict;
+----
+0
+
+statement ok
+alter table my_datalake.default.schema_first_conflict add column marker timestamp;
+
+query I pending
+merge into my_datalake.default.schema_first_conflict as t
+using (values (5::bigint, 'e')) as s(id, payload)
+on t.id = s.id
+when not matched then insert (id, payload) values (s.id, s.payload);
+----
+1
+
+statement ok pending
+commit;
+
+query ITT reader
+select id, payload, marker from my_datalake.default.schema_first_conflict;
+----
+5	e	NULL
+
+# A concurrent first snapshot must also invalidate an older snapshotless write view.
+statement ok
+drop table if exists my_datalake.default.schema_first_snapshot_conflict;
+
+statement ok
+create table my_datalake.default.schema_first_snapshot_conflict (id bigint, payload varchar);
+
+statement ok pending
+begin;
+
+query I pending
+select count(*) from my_datalake.default.schema_first_snapshot_conflict;
+----
+0
+
+statement ok
+insert into my_datalake.default.schema_first_snapshot_conflict values (6, 'winner');
+
+# Refresh the request cache with the newly committed head before preparing the pending writer.
+query I
+select json_extract_string(metadata::JSON, '$."current-snapshot-id"') is not null
+from iceberg_load_table_response(my_datalake.default.schema_first_snapshot_conflict);
+----
+true
+
+statement error pending
+merge into my_datalake.default.schema_first_snapshot_conflict as t
+using (values (7::bigint, 'loser')) as s(id, payload)
+on t.id = s.id
+when not matched then insert (id, payload) values (s.id, s.payload);
+----
+<REGEX>:.*(changed before its first write|does not have a reachable state in this transaction).*
+
+statement ok pending
+rollback;
+
+query IT reader
+select id, payload from my_datalake.default.schema_first_snapshot_conflict;
+----
+6	winner
