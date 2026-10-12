@@ -269,7 +269,11 @@ def publish():
     notes.write_text(
         f"This release adds custom snapshot summary properties. It addresses "
         f"[duckdb/duckdb-iceberg#1249](https://github.com/duckdb/duckdb-iceberg/issues/1249).\n\n"
-        "This revision fixes the first MERGE or INSERT after ADD COLUMN on a table "
+        "This revision prevents a connection failure during a manifest read from "
+        "aborting the host process. The operation returns an I/O error, and cleanup "
+        "finishes without throwing from the scan destructor. "
+        "See [tecbot/duckdb-iceberg#3](https://github.com/tecbot/duckdb-iceberg/issues/3).\n\n"
+        "This release also fixes the first MERGE or INSERT after ADD COLUMN on a table "
         "that has no snapshots. The writer uses the schema selected during binding. "
         "A changed cached table state produces a transaction error. "
         "See [tecbot/duckdb-iceberg#2](https://github.com/tecbot/duckdb-iceberg/issues/2).\n\n"
