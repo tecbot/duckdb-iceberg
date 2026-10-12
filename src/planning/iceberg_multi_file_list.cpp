@@ -125,8 +125,12 @@ IcebergMultiFileListSharedState::IcebergMultiFileListSharedState(ClientContext &
 
 IcebergMultiFileListSharedState::~IcebergMultiFileListSharedState() {
 	if (data_manifest_read_state) {
-		//! FIXME: this could throw, if the tasks encountered an error
-		data_manifest_read_state->executor.WorkOnTasks();
+		try {
+			data_manifest_read_state->executor.WorkOnTasks();
+		} catch (...) {
+			// WorkOnTasks drains all tasks before rethrowing their errors. The regular scan path
+			// reports those errors; cleanup must not rethrow from a noexcept destructor.
+		}
 	}
 }
 

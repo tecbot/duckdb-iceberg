@@ -80,6 +80,25 @@ running `python3 -m pip install duckdb "pyspark[sql]==3.5.0"` should do the tric
 make test 
 ```
 
+#### Manifest connection failure regression
+
+The manifest error test uses Python 3.14, the DuckDB C API, and a local HTTP
+server. It needs no external catalog or Python packages. Each case runs in a
+child process and checks statement preparation, queries, process survival,
+and recovery after storage access returns. The fixture has two manifests
+with one row each, with IDs `42` and `43`.
+
+After `make reldebug`, run:
+
+```shell
+python3 test/manifest_io_errors.py --duckdb-library build/reldebug/src/libduckdb.so
+```
+
+On macOS, use `build/reldebug/src/libduckdb.dylib`. For a build that does not
+link Iceberg into DuckDB, add `--avro-extension` and `--iceberg-extension`
+with the built extension file paths. The fork release workflow runs this
+test for every supported platform before publication.
+
 #### Running the local S3 test server
 
 Running the S3 test cases requires the minio test server to be running and populated with `scripts/upload_iceberg_to_s3_test_server.sh`.
