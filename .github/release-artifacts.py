@@ -122,6 +122,21 @@ def verify():
         assert result == "loaded-file", result
     test("test/sql/local/snapshot_properties_setting.test")
     test("test/sql/copy/copy_snapshot_properties.test")
+    library = (
+        BUILD
+        / "src"
+        / ("libduckdb.dylib" if sys.platform == "darwin" else "libduckdb.so")
+    )
+    run(
+        sys.executable,
+        "test/manifest_io_errors.py",
+        "--duckdb-library",
+        str(library),
+        "--avro-extension",
+        str(BUILD / "extension/avro/avro.duckdb_extension"),
+        "--iceberg-extension",
+        str(artifact),
+    )
 
 
 def catalog():
