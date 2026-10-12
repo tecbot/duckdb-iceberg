@@ -254,7 +254,10 @@ def publish():
     notes.write_text(
         f"This release adds custom snapshot summary properties. It addresses "
         f"[duckdb/duckdb-iceberg#1249](https://github.com/duckdb/duckdb-iceberg/issues/1249).\n\n"
-        "This revision adds native Linux ARM64 binaries.\n\n"
+        "This revision fixes the first MERGE or INSERT after ADD COLUMN on a table "
+        "that has no snapshots. The writer uses the schema selected during binding. "
+        "A changed cached table state produces a transaction error. "
+        "See [tecbot/duckdb-iceberg#2](https://github.com/tecbot/duckdb-iceberg/issues/2).\n\n"
         "Every INSERT creates an append snapshot, including an INSERT that produces zero rows. "
         "Empty appends capture the session snapshot properties, write a new manifest list without new data files, "
         "and use the normal append conflict policy. COMMIT publishes pending snapshots; ROLLBACK discards them.\n\n"
