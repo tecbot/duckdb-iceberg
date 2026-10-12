@@ -1,0 +1,71 @@
+# name: test/sql/local/catalog_test_config_setup/catalog_agnostic/transactions/test_schema_before_first_snapshot_v3.test
+# description: First MERGE after schema evolution preserves format v3 row lineage
+# group: [transactions]
+
+require-env CATALOG_TEST_CONFIG_SETUP
+
+require avro
+
+require parquet
+
+require iceberg
+
+require httpfs
+
+require json
+
+statement ok
+set iceberg_use_metadata_log = true;
+
+statement ok reader
+set iceberg_use_metadata_log = false;
+
+statement ok
+drop table if exists my_datalake.default.schema_first_row_lineage;
+
+statement ok
+create table my_datalake.default.schema_first_row_lineage (id bigint, payload varchar)
+with ('format-version' = 3);
+
+statement ok pending
+begin;
+
+statement ok
+alter table my_datalake.default.schema_first_row_lineage add column marker timestamp;
+
+query I pending
+merge into my_datalake.default.schema_first_row_lineage as t
+using (values (1::bigint, 'a', timestamp '2026-01-01'),
+              (2::bigint, 'b', timestamp '2026-01-02')) as s(id, payload, marker)
+on t.id = s.id
+when matched then update set payload = s.payload, marker = s.marker
+when not matched then insert (id, payload, marker) values (s.id, s.payload, s.marker);
+----
+2
+
+statement ok pending
+commit;
+
+query IITT reader
+select id, _row_id, payload, marker from my_datalake.default.schema_first_row_lineage order by id;
+----
+1	0	a	2026-01-01 00:00:00
+2	1	b	2026-01-02 00:00:00
+
+statement ok
+insert into my_datalake.default.schema_first_row_lineage values (3, 'c', timestamp '2026-01-03');
+
+query IITT reader
+select id, _row_id, payload, marker from my_datalake.default.schema_first_row_lineage order by id;
+----
+1	0	a	2026-01-01 00:00:00
+2	1	b	2026-01-02 00:00:00
+3	2	c	2026-01-03 00:00:00
+
+query III reader
+select json_extract_string(metadata::JSON, '$."next-row-id"')::BIGINT,
+       json_extract_string(metadata::JSON, '$.snapshots[1]."first-row-id"')::BIGINT,
+       json_extract_string(metadata::JSON, '$.snapshots[1]."added-rows"')::BIGINT
+from iceberg_load_table_response(my_datalake.default.schema_first_row_lineage);
+----
+3	2	1
