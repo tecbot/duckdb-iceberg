@@ -122,6 +122,8 @@ def verify():
         assert result == "loaded-file", result
     test("test/sql/local/snapshot_properties_setting.test")
     test("test/sql/copy/copy_snapshot_properties.test")
+    test("test/sql/local/iceberg_scans/iceberg_column_stats_truncated_utf8.test")
+    test("test/sql/copy/utf8_string_bounds.test")
     library = (
         BUILD
         / "src"

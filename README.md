@@ -99,6 +99,24 @@ link Iceberg into DuckDB, add `--avro-extension` and `--iceberg-extension`
 with the built extension file paths. The fork release workflow runs this
 test for every supported platform before publication.
 
+#### Invalid UTF-8 string bounds
+
+The reader omits optional string bounds that contain invalid UTF-8. Filters
+then read the affected data file instead of excluding it with an invalid
+bound. Other valid statistics remain available for pruning. New writes
+truncate string bounds at complete UTF-8 code points.
+
+After `make reldebug`, run both regression tests:
+
+```shell
+build/reldebug/test/unittest 'test/sql/local/iceberg_scans/iceberg_column_stats_truncated_utf8.test,test/sql/copy/utf8_string_bounds.test'
+```
+
+The read test checks equality, joins, a materialized CTE, null checks, range
+filters, and ordering with a limit. The write test checks two-, three-, and
+four-byte characters at the truncation boundary. The fork release workflow
+runs both tests for every supported platform before publication.
+
 #### Running the local S3 test server
 
 Running the S3 test cases requires the minio test server to be running and populated with `scripts/upload_iceberg_to_s3_test_server.sh`.
