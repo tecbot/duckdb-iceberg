@@ -271,7 +271,12 @@ def publish():
     notes.write_text(
         f"This release adds custom snapshot summary properties. It addresses "
         f"[duckdb/duckdb-iceberg#1249](https://github.com/duckdb/duckdb-iceberg/issues/1249).\n\n"
-        "This revision prevents a connection failure during a manifest read from "
+        "This revision omits optional string bounds that contain invalid UTF-8. "
+        "Filters read the affected data file instead of excluding it with an invalid bound. "
+        "Other valid statistics remain available for pruning. New writes retain "
+        "string bound truncation at complete UTF-8 code points. "
+        "See [tecbot/duckdb-iceberg#4](https://github.com/tecbot/duckdb-iceberg/issues/4).\n\n"
+        "This release also prevents a connection failure during a manifest read from "
         "aborting the host process. The operation returns an I/O error, and cleanup "
         "finishes without throwing from the scan destructor. "
         "See [tecbot/duckdb-iceberg#3](https://github.com/tecbot/duckdb-iceberg/issues/3).\n\n"
