@@ -1,6 +1,5 @@
 #pragma once
 
-#include "duckdb/common/optional_ptr.hpp"
 #include "duckdb/common/string.hpp"
 #include "duckdb/common/types/string_type.hpp"
 #include "duckdb/common/types/value.hpp"
@@ -83,10 +82,8 @@ public:
 	IcebergValue() = delete;
 
 public:
-	//! Pass 'bound' when deserializing a lower/upper bound: invalid UTF-8 string bounds are then repaired
-	//! where possible.
-	static DeserializeResult DeserializeValue(const string_t &blob, const LogicalType &target,
-	                                          optional_ptr<const SerializeBound> bound = nullptr);
+	//! Invalid UTF-8 returns an error. Optional bounds can be omitted by the caller.
+	static DeserializeResult DeserializeValue(const string_t &blob, const LogicalType &target);
 	static SerializeResult SerializeValue(IcebergColumnStats &stats, const LogicalType &column_type,
 	                                      SerializeBound bound_type);
 	static SerializeResult SerializeValue(Value input_value, const LogicalType &column_type, SerializeBound bound_type,

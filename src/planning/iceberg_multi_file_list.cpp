@@ -517,8 +517,7 @@ IcebergPredicateStats IcebergPredicateStats::DeserializeBounds(ClientContext &co
 
 	if (!lower_bound.IsNull()) {
 		D_ASSERT(lower_bound.type().id() == LogicalTypeId::BLOB);
-		auto deserialized =
-		    IcebergValue::DeserializeValue(lower_bound.GetValueUnsafe<string_t>(), type, SerializeBound::LOWER_BOUND);
+		auto deserialized = IcebergValue::DeserializeValue(lower_bound.GetValueUnsafe<string_t>(), type);
 		if (deserialized.HasError()) {
 			// Bounds are optional, so omit one that cannot be deserialized rather than failing the scan.
 			DUCKDB_LOG(context, IcebergLogType, "Omitting invalid lower bound for column '%s' of type %s", name,
@@ -530,8 +529,7 @@ IcebergPredicateStats IcebergPredicateStats::DeserializeBounds(ClientContext &co
 
 	if (!upper_bound.IsNull()) {
 		D_ASSERT(upper_bound.type().id() == LogicalTypeId::BLOB);
-		auto deserialized =
-		    IcebergValue::DeserializeValue(upper_bound.GetValueUnsafe<string_t>(), type, SerializeBound::UPPER_BOUND);
+		auto deserialized = IcebergValue::DeserializeValue(upper_bound.GetValueUnsafe<string_t>(), type);
 		if (deserialized.HasError()) {
 			// Bounds are optional, so omit one that cannot be deserialized rather than failing the scan.
 			DUCKDB_LOG(context, IcebergLogType, "Omitting invalid upper bound for column '%s' of type %s", name,
