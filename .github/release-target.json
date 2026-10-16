@@ -10,8 +10,9 @@
     "test_empty_insert.test",
     "test_empty_insert_v3.test",
     "test_schema_before_first_snapshot.test",
-    "test_schema_before_first_snapshot_v3.test"
+    "test_schema_before_first_snapshot_v3.test",
+    "test_refs_snapshot_consistency.test"
   ],
   "prerelease": false,
-  "release_revision": 9
+  "release_revision": 10
 }

@@ -124,6 +124,8 @@ def verify():
     test("test/sql/copy/copy_snapshot_properties.test")
     test("test/sql/local/iceberg_scans/iceberg_column_stats_truncated_utf8.test")
     test("test/sql/copy/utf8_string_bounds.test")
+    test("test/sql/local/iceberg_scans/iceberg_metadata.test")
+    test("test/sql/local/iceberg_scans/iceberg_refs.test")
     library = (
         BUILD
         / "src"
@@ -271,7 +273,16 @@ def publish():
     notes.write_text(
         f"This release adds custom snapshot summary properties. It addresses "
         f"[duckdb/duckdb-iceberg#1249](https://github.com/duckdb/duckdb-iceberg/issues/1249).\n\n"
-        "This revision omits optional string bounds that contain invalid UTF-8. "
+        "This revision backports `iceberg_refs()` to DuckDB 1.5. It lists branch "
+        "and tag heads with their optional retention settings. Join its `main` row "
+        "to `iceberg_snapshots()` to find the main head when another branch has "
+        "a higher snapshot sequence number. Metadata without `refs` returns "
+        "`main` at the current snapshot; metadata without either returns no rows. "
+        "For catalog table names, both functions use the transaction's cached "
+        "metadata file across concurrent commits. "
+        "See [fork issue #5](https://github.com/tecbot/duckdb-iceberg/issues/5) and "
+        "[upstream 1.5 backport PR #1603](https://github.com/duckdb/duckdb-iceberg/pull/1603).\n\n"
+        "This release also omits optional string bounds that contain invalid UTF-8. "
         "Filters read the affected data file instead of excluding it with an invalid bound. "
         "Other valid statistics remain available for pruning. New writes retain "
         "string bound truncation at complete UTF-8 code points. "
