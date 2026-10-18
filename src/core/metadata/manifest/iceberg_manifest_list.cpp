@@ -134,22 +134,19 @@ void IcebergManifest::SetCountsFromEntries(const vector<IcebergManifestEntry> &e
 	}
 }
 
-IcebergManifestListEntry IcebergManifestListEntry::CreateFromEntries(sequence_number_t sequence_number,
-                                                                     const IcebergTableMetadata &table_metadata,
-                                                                     const IcebergManifestMetadata &manifest_metadata,
-                                                                     vector<IcebergManifestEntry> &&manifest_entries,
-                                                                     optional<int64_t> first_row_id) {
-	IcebergManifestListEntry manifest_list_entry(
-	    IcebergManifest(manifest_metadata.partition_spec_id, manifest_metadata.content, sequence_number),
-	    manifest_metadata);
+IcebergManifest IcebergManifest::CreateFromEntries(sequence_number_t sequence_number,
+                                                   const IcebergTableMetadata &table_metadata,
+                                                   const IcebergManifestMetadata &manifest_metadata,
+                                                   const vector<IcebergManifestEntry> &manifest_entries,
+                                                   optional<int64_t> first_row_id) {
 	auto manifest_content = manifest_metadata.content;
 	auto manifest_partition_spec_id = manifest_metadata.partition_spec_id;
-	auto &manifest_file = manifest_list_entry.GetManifest();
+	IcebergManifest manifest(manifest_partition_spec_id, manifest_content, sequence_number);
 	if (manifest_content == IcebergManifestContentType::DATA) {
-		manifest_file.first_row_id = first_row_id;
+		manifest.first_row_id = first_row_id;
 	}
 
-	manifest_file.SetCountsFromEntries(manifest_entries);
+	manifest.SetCountsFromEntries(manifest_entries);
 
 	for (const auto &manifest_entry : manifest_entries) {
 		const auto &data_file = manifest_entry.data_file;
@@ -162,9 +159,9 @@ IcebergManifestListEntry IcebergManifestListEntry::CreateFromEntries(sequence_nu
 			throw InvalidConfigurationException("Encountered data_file.content == DATA in DELETE manifest");
 		}
 
-		auto entry_data_seq = manifest_entry.GetSequenceNumber(manifest_file);
-		if (!manifest_file.min_sequence_number || entry_data_seq < *manifest_file.min_sequence_number) {
-			manifest_file.min_sequence_number = entry_data_seq;
+		auto entry_data_seq = manifest_entry.GetSequenceNumber(manifest);
+		if (!manifest.min_sequence_number || entry_data_seq < *manifest.min_sequence_number) {
+			manifest.min_sequence_number = entry_data_seq;
 		}
 	}
 	// Compute partition field summaries (upper/lower bounds) for the manifest list entry
@@ -177,30 +174,24 @@ IcebergManifestListEntry IcebergManifestListEntry::CreateFromEntries(sequence_nu
 	auto &partition_spec = partition_spec_it->second;
 	if (partition_spec.IsPartitioned()) {
 		auto &target_schema = table_metadata.GetSchemaFromId(manifest_metadata.schema_id);
-		manifest_file.partitions.Create(table_metadata, target_schema, partition_spec, manifest_entries);
+		manifest.partitions.Create(table_metadata, target_schema, partition_spec, manifest_entries);
 	}
 
-	auto &stored_entries = manifest_list_entry.GetOrCreateManifestEntries();
-	stored_entries.insert(stored_entries.end(), std::make_move_iterator(manifest_entries.begin()),
-	                      std::make_move_iterator(manifest_entries.end()));
-	return manifest_list_entry;
+	return manifest;
+}
+
+IcebergManifestListEntry IcebergManifestListEntry::CreateForScan(sequence_number_t sequence_number,
+                                                                 const IcebergTableMetadata &table_metadata,
+                                                                 const IcebergManifestMetadata &manifest_metadata,
+                                                                 vector<IcebergManifestEntry> entries) {
+	auto manifest =
+	    IcebergManifest::CreateFromEntries(sequence_number, table_metadata, manifest_metadata, entries, nullopt);
+	return IcebergManifestListEntry(std::move(manifest), manifest_metadata, std::move(entries));
 }
 
 IcebergManifestListEntry IcebergPendingManifest::CreateScanEntry(const IcebergTableMetadata &table_metadata,
-                                                                 sequence_number_t sequence_number,
-                                                                 int64_t &next_row_id) const {
-	auto copied_entries = entries;
-	optional<int64_t> first_row_id;
-	if (metadata.format_version >= 3 && metadata.content == IcebergManifestContentType::DATA) {
-		first_row_id = next_row_id;
-	}
-	for (const auto &entry : entries) {
-		if (entry.data_file.content == IcebergManifestEntryContentType::DATA) {
-			next_row_id += entry.data_file.record_count;
-		}
-	}
-	return IcebergManifestListEntry::CreateFromEntries(sequence_number, table_metadata, metadata,
-	                                                   std::move(copied_entries), first_row_id);
+                                                                 sequence_number_t sequence_number) const {
+	return IcebergManifestListEntry::CreateForScan(sequence_number, table_metadata, metadata, entries);
 }
 
 // Iceberg Java compares UUIDs as two signed longs; DuckDB compares unsigned bytes.
@@ -353,19 +344,21 @@ void ManifestPartitions::Create(const IcebergTableMetadata &metadata, const Iceb
 		D_ASSERT(have_extended_partition_info);
 		auto serialized_type = extended_partition_info.transform.GetSerializedType(extended_partition_info.source_type);
 		// min/max_values already in their partition result value types. We cast those to varchar to serialize them
-		// again unless they are blob, in which case we do not cast and serialize
-		SerializeResult lower_result = SerializeResult(min_values[i].type(), min_values[i]);
-		SerializeResult upper_result = SerializeResult(max_values[i].type(), max_values[i]);
-		if (min_values[i].type().id() == LogicalTypeId::UUID) {
+		// again unless they are blob (binary or fixed[L]), which already hold the serialized bytes.
+		auto &value_type = min_values[i].type();
+		SerializeResult lower_result = SerializeResult(value_type, min_values[i]);
+		SerializeResult upper_result = SerializeResult(value_type, max_values[i]);
+		if (value_type.id() == LogicalTypeId::UUID) {
 			// File metrics only provide unsigned extrema, so they cannot perform this compatibility check.
 			// Keep UUID serialization here, after checking both orders over all partition values.
-			lower_result = SerializeResult(min_values[i].type(), SerializeUUIDBound(min_values[i]));
-			upper_result = SerializeResult(max_values[i].type(), SerializeUUIDBound(max_values[i]));
-		} else if (min_values[i].type() != LogicalType::BLOB && max_values[i].type() != LogicalType::BLOB) {
-			lower_result = IcebergValue::SerializeValue(min_values[i].DefaultCastAs(LogicalType::VARCHAR),
-			                                            min_values[i].type(), SerializeBound::LOWER_BOUND);
-			upper_result = IcebergValue::SerializeValue(max_values[i].DefaultCastAs(LogicalType::VARCHAR),
-			                                            max_values[i].type(), SerializeBound::UPPER_BOUND);
+			lower_result = SerializeResult(value_type, SerializeUUIDBound(min_values[i]));
+			upper_result = SerializeResult(value_type, SerializeUUIDBound(max_values[i]));
+		} else {
+			auto blob_bounds = value_type.id() == LogicalTypeId::BLOB;
+			auto lower_input = blob_bounds ? min_values[i] : min_values[i].DefaultCastAs(LogicalType::VARCHAR);
+			auto upper_input = blob_bounds ? max_values[i] : max_values[i].DefaultCastAs(LogicalType::VARCHAR);
+			lower_result = IcebergValue::SerializeValue(lower_input, value_type, SerializeBound::LOWER_BOUND);
+			upper_result = IcebergValue::SerializeValue(upper_input, value_type, SerializeBound::UPPER_BOUND);
 		}
 
 		if (!lower_result.HasValue() || !upper_result.HasValue()) {

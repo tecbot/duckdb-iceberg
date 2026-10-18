@@ -28,12 +28,15 @@ private:
 	static TableFunctionSet GetIcebergScanPlanFunction();
 	static TableFunctionSet GetIcebergScanTasksFunction();
 	static TableFunctionSet GetIcebergSnapshotsFunction();
+	static TableFunctionSet GetIcebergHistoryFunction();
+	static TableFunctionSet GetIcebergRefsFunction();
 	static TableFunctionSet GetIcebergScanFunction(ExtensionLoader &loader);
 	static TableFunctionSet GetIcebergMetadataFunction();
 	static TableFunctionSet GetIcebergLoadTableResponseFunction();
 	static TableFunctionSet GetIcebergViewMetadataFunction();
 	static TableFunctionSet GetIcebergColumnStatsFunction();
 	static TableFunctionSet GetIcebergPartitionStatsFunction();
+	static TableFunctionSet GetIcebergManifestsFunction();
 	static TableFunctionSet GetIcebergToDuckLakeFunction();
 	static TableFunctionSet GetIcebergTablePropertiesFunctions();
 	static TableFunctionSet SetIcebergTablePropertiesFunctions();

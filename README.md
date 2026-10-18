@@ -41,6 +41,19 @@ LOAD '/absolute/path/to/iceberg.duckdb_extension';
 ```
 
 Use the release workflow to build and test all three platforms. Linux ARM64 builds run on a native ARM64 runner. Push a tag in the form `iceberg-snapshot-properties-duckdb-<version>-v<release_revision>` from the branch that holds the matching `.github/release-target.json`. The workflow verifies file loading, SQL behavior, REST writes, engine identity, and checksums before it creates the GitHub release. It uses Python 3.14.
+## Row lineage inside transactions
+
+For format version 3 tables, rows inserted within a transaction have NULL `_row_id`
+and `_last_updated_sequence_number` until commit. An UPDATE preserves an already
+assigned `_row_id`, including through repeated updates in the same transaction,
+but its new `_last_updated_sequence_number` remains NULL until commit. Rows from
+before a v2-to-v3 upgrade also retain NULL lineage until a v3 snapshot assigns it.
+
+Each data-changing statement publishes a snapshot at commit. A row inserted and
+then updated within one transaction can receive a different `_row_id` in each
+of those snapshots: the updates cannot preserve an ID that has not been assigned
+yet. After commit, further updates preserve its assigned ID. Use a business key
+to identify pending rows, rather than relying on their nullable lineage columns.
 
 ## Development setup
 

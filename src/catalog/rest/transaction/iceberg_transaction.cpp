@@ -286,14 +286,13 @@ static SingleTableStagedCommit StageSingleTableCommit(DatabaseInstance &db, Iceb
 	auto &metadata = commit_state.table_info.table_metadata;
 	auto current_snapshot = metadata.GetLatestSnapshot();
 	auto &transaction_data = *commit_state.table_info.transaction_data;
+	transaction_data.VerifyMergeDeletesComplete();
 	info.retryable = transaction_data.SupportsAppendRetry();
 	info.retry_config = IcebergRetryConfig::FromTableMetadata(metadata);
 	if (!transaction_data.alters.empty()) {
 		table_info.LoadCredentials(context);
 		commit_state.LoadExistingManifests(db, std::move(transaction_data.existing_manifest_list));
 	}
-	commit_state.latest_snapshot = current_snapshot;
-
 	VerifyDeleteRetryability(commit_state.table_info, current_snapshot);
 
 	for (auto &update : transaction_data.updates) {
@@ -303,7 +302,7 @@ static SingleTableStagedCommit StageSingleTableCommit(DatabaseInstance &db, Iceb
 	CreateTableRequirements(db, context, commit_state, transaction_data, current_snapshot);
 
 	if (!transaction_data.alters.empty()) {
-		auto &snapshot = *commit_state.latest_snapshot;
+		auto &snapshot = *commit_state.GetLatestSnapshot();
 		SetSnapshotRef set_snapshot_ref(snapshot.snapshot_id);
 		set_snapshot_ref.CreateUpdate(db, context, commit_state);
 	}
