@@ -25,13 +25,13 @@ unique_ptr<IcebergAuthorization> NoneAuthorization::FromAttachOptions(AttachedDa
 
 unique_ptr<HTTPResponse> NoneAuthorization::Request(RequestType request_type, ClientContext &context,
                                                     const IRCEndpointBuilder &endpoint_builder, HTTPHeaders &headers,
-                                                    const string &data) {
+                                                    const string &data, optional_ptr<IcebergMutationRequest> mutation) {
 	// Merge extra HTTP headers
 	for (auto &entry : extra_http_headers) {
 		headers.Insert(entry.first, entry.second);
 	}
 
-	return APIUtils::Request(request_type, context, endpoint_builder, headers, data);
+	return APIUtils::Request(request_type, context, endpoint_builder, headers, data, mutation);
 }
 
 } // namespace duckdb

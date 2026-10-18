@@ -13,7 +13,7 @@ namespace duckdb {
 class AWSInput {
 public:
 	unique_ptr<HTTPResponse> Request(RequestType request_type, ClientContext &context, HTTPHeaders &headers,
-	                                 const string &data);
+	                                 const string &data, optional_ptr<IcebergMutationRequest> mutation = nullptr);
 
 	//! The path that goes into the SigV4 canonical request. Mirrors
 	//! Aws::Http::URI::GetURLEncodedPath: every byte outside A-Za-z0-9-_.~ is percent-encoded,

@@ -9,6 +9,8 @@
 
 namespace duckdb {
 
+class IcebergMutationRequest;
+
 struct IcebergAuthorization {
 public:
 	IcebergAuthorization(AttachedDatabase &db, IcebergAuthorizationType type) : db(db), type(type) {
@@ -24,7 +26,8 @@ public:
 public:
 	virtual unique_ptr<HTTPResponse> Request(RequestType request_type, ClientContext &context,
 	                                         const IRCEndpointBuilder &endpoint_builder, HTTPHeaders &headers,
-	                                         const string &data = "") = 0;
+	                                         const string &data = "",
+	                                         optional_ptr<IcebergMutationRequest> mutation = nullptr) = 0;
 
 public:
 	template <class TARGET>
