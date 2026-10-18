@@ -22,7 +22,8 @@ public:
 	static unique_ptr<IcebergAuthorization> FromAttachOptions(AttachedDatabase &db, IcebergAttachOptions &input);
 	unique_ptr<HTTPResponse> Request(RequestType request_type, ClientContext &context,
 	                                 const IRCEndpointBuilder &endpoint_builder, HTTPHeaders &headers,
-	                                 const string &data = "") override;
+	                                 const string &data = "",
+	                                 optional_ptr<IcebergMutationRequest> mutation = nullptr) override;
 
 private:
 	AWSInput CreateAWSInput(ClientContext &context, const IRCEndpointBuilder &endpoint_builder);

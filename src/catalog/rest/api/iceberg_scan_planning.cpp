@@ -1,4 +1,5 @@
 #include "catalog/rest/api/iceberg_scan_planning.hpp"
+#include "catalog/rest/api/api_utils.hpp"
 
 #include "duckdb/common/exception.hpp"
 #include "duckdb/common/error_data.hpp"
@@ -309,9 +310,8 @@ static void FetchPlanTasks(ClientContext &context, IcebergTable &table_info, Pla
 		auto body = writer.ToString(JSONWriteFlags::ALLOW_INF_AND_NAN);
 		ICUtils::LogPostBody(context, endpoint, body);
 		auto headers = PlanningHeaders(context);
-		headers.Insert("Idempotency-Key", UUID::ToString(UUID::GenerateRandomUUID()));
 		auto response =
-		    table_info.catalog.auth_handler->Request(RequestType::POST_REQUEST, context, endpoint, headers, body);
+		    APIUtils::RequestMutation(RequestType::POST_REQUEST, table_info.catalog, context, endpoint, headers, body);
 		if (response->status != HTTPStatusCode::OK_200) {
 			ThrowResponseError(endpoint, *response);
 		}
@@ -415,12 +415,10 @@ bool IcebergServerSideScanPlanning::Plan(ClientContext &context, IcebergTable &t
 	auto endpoint = TableEndpoint(table_info);
 	endpoint.AddPathComponent(IRCPathComponent::RegularComponent("plan"));
 	auto headers = PlanningHeaders(context);
-	// A fresh key makes retries of each logical planning operation idempotent on servers that support it.
-	headers.Insert("Idempotency-Key", UUID::ToString(UUID::GenerateRandomUUID()));
 	auto body = SerializePlanRequest(request);
 	ICUtils::LogPostBody(context, endpoint, body);
 	auto response =
-	    table_info.catalog.auth_handler->Request(RequestType::POST_REQUEST, context, endpoint, headers, body);
+	    APIUtils::RequestMutation(RequestType::POST_REQUEST, table_info.catalog, context, endpoint, headers, body);
 	if (response->status == HTTPStatusCode::NotAcceptable_406) {
 		return false;
 	}
@@ -513,9 +511,8 @@ bool IcebergServerSideScanPlanning::Plan(ClientContext &context, IcebergTable &t
 				cancel_endpoint.AddPathComponent(IRCPathComponent::RegularComponent("plan"));
 				cancel_endpoint.AddPathComponent(IRCPathComponent::RegularComponent(*active_plan_id));
 				auto cancel_headers = PlanningHeaders(context);
-				cancel_headers.Insert("Idempotency-Key", UUID::ToString(UUID::GenerateRandomUUID()));
-				table_info.catalog.auth_handler->Request(RequestType::DELETE_REQUEST, context, cancel_endpoint,
-				                                         cancel_headers);
+				APIUtils::RequestMutation(RequestType::DELETE_REQUEST, table_info.catalog, context, cancel_endpoint,
+				                          cancel_headers);
 			} catch (std::exception &e) {
 				auto error = ErrorData(e);
 				DUCKDB_LOG(context, IcebergLogType,

@@ -1,4 +1,5 @@
 #include "catalog/rest/storage/aws.hpp"
+#include "catalog/rest/api/api_utils.hpp"
 
 #include "duckdb/common/http_util.hpp"
 #include "duckdb/common/http_transport_manager.hpp"
@@ -156,7 +157,7 @@ string AWSInput::URL() const {
 }
 
 unique_ptr<HTTPResponse> AWSInput::Request(RequestType request_type, ClientContext &context, HTTPHeaders &headers,
-                                           const string &data) {
+                                           const string &data, optional_ptr<IcebergMutationRequest> mutation) {
 	auto &db = DatabaseInstance::GetDatabase(context);
 
 	HTTPHeaders res(db);
@@ -196,7 +197,12 @@ unique_ptr<HTTPResponse> AWSInput::Request(RequestType request_type, ClientConte
 		signed_headers += "content-type;";
 		res["Content-Type"] = content_type;
 	}
-	signed_headers += "host;x-amz-content-sha256;x-amz-date";
+	signed_headers += "host;";
+	if (headers.HasHeader("Idempotency-Key")) {
+		res["Idempotency-Key"] = headers.GetHeaderValue("Idempotency-Key");
+		signed_headers += "idempotency-key;";
+	}
+	signed_headers += "x-amz-content-sha256;x-amz-date";
 	if (session_token.length() > 0) {
 		signed_headers += ";x-amz-security-token";
 	}
@@ -227,8 +233,11 @@ unique_ptr<HTTPResponse> AWSInput::Request(RequestType request_type, ClientConte
 	if (content_type.length() > 0) {
 		canonical_request += "\ncontent-type:" + content_type;
 	}
-	canonical_request +=
-	    "\nhost:" + authority + "\nx-amz-content-sha256:" + payload_hash + "\nx-amz-date:" + datetime_now;
+	canonical_request += "\nhost:" + authority;
+	if (headers.HasHeader("Idempotency-Key")) {
+		canonical_request += "\nidempotency-key:" + headers.GetHeaderValue("Idempotency-Key");
+	}
+	canonical_request += "\nx-amz-content-sha256:" + payload_hash + "\nx-amz-date:" + datetime_now;
 	if (session_token.length() > 0) {
 		canonical_request += "\nx-amz-security-token:" + session_token;
 	}
@@ -262,6 +271,9 @@ unique_ptr<HTTPResponse> AWSInput::Request(RequestType request_type, ClientConte
 	string request_url = URL();
 	auto session = db.config.GetHTTPTransportManager().CreateSession(context, request_url);
 	auto &params = session.Parameters();
+	if (mutation) {
+		mutation->Prepare(res, params);
+	}
 
 	switch (request_type) {
 	case RequestType::HEAD_REQUEST: {
@@ -270,6 +282,7 @@ unique_ptr<HTTPResponse> AWSInput::Request(RequestType request_type, ClientConte
 	}
 	case RequestType::DELETE_REQUEST: {
 		DeleteRequestInfo delete_request(request_url, res, params);
+		delete_request.try_request = bool(mutation);
 		return session.Request(delete_request);
 	}
 	case RequestType::GET_REQUEST: {
@@ -279,6 +292,7 @@ unique_ptr<HTTPResponse> AWSInput::Request(RequestType request_type, ClientConte
 	case RequestType::POST_REQUEST: {
 		PostRequestInfo post_request(request_url, res, params, reinterpret_cast<const_data_ptr_t>(data.c_str()),
 		                             data.size());
+		post_request.try_request = bool(mutation);
 		auto x = session.Request(post_request);
 		if (x) {
 			x->body = post_request.buffer_out;

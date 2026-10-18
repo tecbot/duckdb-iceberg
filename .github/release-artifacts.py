@@ -122,6 +122,17 @@ def verify():
         assert result == "loaded-file", result
     test("test/sql/local/snapshot_properties_setting.test")
     test("test/sql/copy/copy_snapshot_properties.test")
+    run(
+        sys.executable,
+        "test/catalog_idempotency.py",
+        "--duckdb",
+        str(BUILD / "duckdb"),
+        "--avro-extension",
+        str(BUILD / "extension/avro/avro.duckdb_extension"),
+        "--iceberg-extension",
+        str(artifact),
+        "--conflict-retry",
+    )
 
 
 def catalog():
@@ -254,7 +265,15 @@ def publish():
     notes.write_text(
         f"This release adds custom snapshot summary properties. It addresses "
         f"[duckdb/duckdb-iceberg#1249](https://github.com/duckdb/duckdb-iceberg/issues/1249).\n\n"
-        "This revision adds native Linux ARM64 binaries.\n\n"
+        "This revision adds catalog mutation idempotency. When a catalog advertises "
+        "`idempotency-key-lifetime`, mutations send a UUIDv7 key and reuse it across "
+        "transport retries and OAuth refresh. Different mutations and restaged conflict "
+        "retries use new keys. Retry expiry reports an unknown outcome and preserves "
+        "potentially committed data files. Catalogs without the capability keep their "
+        "existing behavior. See [fork issue #6](https://github.com/tecbot/duckdb-iceberg/issues/6).\n\n"
+        "This DuckDB 2.0 integration includes snapshot properties, empty INSERT snapshots, "
+        "the malformed UTF-8 bounds fix, and upstream schema binding, manifest cleanup, "
+        "and snapshot reference implementations.\n\n"
         "Every INSERT creates an append snapshot, including an INSERT that produces zero rows. "
         "Empty appends capture the session snapshot properties, write a new manifest list without new data files, "
         "and use the normal append conflict policy. COMMIT publishes pending snapshots; ROLLBACK discards them.\n\n"
