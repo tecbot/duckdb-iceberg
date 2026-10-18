@@ -1,6 +1,6 @@
 {
-  "duckdb_version": "v2.0.0-dev86877",
-  "duckdb_commit": "26e63077ac75b8221f905e49154f6e6cfd0b0a9e",
+  "duckdb_version": "v2.0.0-dev88506",
+  "duckdb_commit": "605a63570a44966d2109c11459d021c7034c8b2e",
   "catalog": "mock",
   "catalog_tests": [
     "test_snapshot_properties.test",
@@ -8,8 +8,11 @@
     "test_snapshot_properties_retry.test",
     "test_empty_insert.test",
     "test_empty_insert_v3.test",
-    "test_empty_insert_retry.test"
+    "test_empty_insert_retry.test",
+    "test_schema_before_first_snapshot.test",
+    "test_refs_snapshot_consistency.test",
+    "test_snapshot_properties_operations_v3.test"
   ],
   "prerelease": true,
-  "release_revision": 6
+  "release_revision": 11
 }

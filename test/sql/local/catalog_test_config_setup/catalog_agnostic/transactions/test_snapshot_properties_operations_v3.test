@@ -1,0 +1,108 @@
+# name: test/sql/local/catalog_test_config_setup/catalog_agnostic/transactions/test_snapshot_properties_operations_v3.test
+# description: V3 CTAS, UPDATE, DELETE, and MERGE capture snapshot properties
+# group: [transactions]
+
+require-env CATALOG_TEST_CONFIG_SETUP
+
+require-env FORMAT_V3_SUPPORT
+
+require avro
+
+require parquet
+
+require iceberg
+
+require httpfs
+
+require json
+
+# This test checks snapshot properties, independent of catalog metadata-log support.
+statement ok
+set session iceberg_use_metadata_log = false;
+
+statement ok
+drop table if exists my_datalake.default.snapshot_properties_operations_v3;
+
+statement ok
+set iceberg_snapshot_properties = '{"application.transaction-id":"ctas"}';
+
+statement ok
+create table my_datalake.default.snapshot_properties_operations_v3 with ('format-version' = 3) as select range::integer as id from range(3);
+
+statement ok
+create temp view operation_summaries as
+select json_extract_string(snap, '$."sequence-number"')::BIGINT as seq,
+       json_extract(snap, '$.summary') as summary
+from (
+ select unnest(json_extract(metadata::JSON, '$.snapshots[*]')) as snap
+ from iceberg_load_table_response(my_datalake.default.snapshot_properties_operations_v3)
+);
+
+query TT
+select summary->>'application.transaction-id', summary->>'operation' from operation_summaries;
+----
+ctas	append
+
+statement ok
+set iceberg_snapshot_properties = '{"application.transaction-id":"update"}';
+
+statement ok
+update my_datalake.default.snapshot_properties_operations_v3 set id = 10 where id = 0;
+
+query T
+select summary->>'application.transaction-id' from operation_summaries order by seq desc limit 1;
+----
+update
+
+statement ok
+set iceberg_snapshot_properties = '{"application.transaction-id":"delete"}';
+
+statement ok
+delete from my_datalake.default.snapshot_properties_operations_v3 where id = 1;
+
+query TT
+select summary->>'application.transaction-id', summary->>'operation' from operation_summaries order by seq desc limit 1;
+----
+delete	delete
+
+statement ok
+set variable pre_merge_seq = (select max(seq) from operation_summaries);
+
+statement ok
+set iceberg_snapshot_properties = '{"application.transaction-id":"merge"}';
+
+statement ok
+begin;
+
+statement ok
+merge into my_datalake.default.snapshot_properties_operations_v3 as target
+using (values (10, 11), (20, 20)) as source(id, replacement)
+on target.id = source.id
+when matched then update set id = source.replacement
+when not matched then insert values (source.replacement);
+
+statement ok
+reset iceberg_snapshot_properties;
+
+statement ok
+commit;
+
+# MERGE creates one snapshot that carries the execution properties.
+query II
+select count(*) = 1, bool_and(summary->>'application.transaction-id' = 'merge')
+from operation_summaries where seq > getvariable('pre_merge_seq');
+----
+true	true
+
+query I
+select id from my_datalake.default.snapshot_properties_operations_v3 order by id;
+----
+2
+11
+20
+
+statement ok
+drop table my_datalake.default.snapshot_properties_operations_v3;
+
+statement ok
+reset session iceberg_use_metadata_log;
