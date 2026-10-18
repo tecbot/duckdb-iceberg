@@ -1,0 +1,72 @@
+{
+  "format-version": 2,
+  "table-uuid": "887c6aa0-545b-4f67-b69f-8fa6dab3ec42",
+  "location": "/manifest_io_errors",
+  "last-updated-ms": 1791839444102,
+  "last-column-id": 1,
+  "schemas": [
+    {
+      "type": "struct",
+      "fields": [
+        {
+          "name": "id",
+          "id": 1,
+          "type": "long",
+          "required": false
+        }
+      ],
+      "schema-id": 0
+    }
+  ],
+  "current-schema-id": 0,
+  "partition-specs": [
+    {
+      "spec-id": 0,
+      "fields": []
+    }
+  ],
+  "default-spec-id": 0,
+  "last-partition-id": 999,
+  "properties": {},
+  "current-snapshot-id": 7112769601941751927,
+  "snapshots": [
+    {
+      "snapshot-id": 7112769601941751927,
+      "sequence-number": 1,
+      "timestamp-ms": 1791839444102,
+      "manifest-list": "/manifest_io_errors/metadata/manifest-list.avro",
+      "summary": {
+        "operation": "append",
+        "total-position-deletes": "0",
+        "total-delete-files": "0",
+        "deleted-records": "0",
+        "deleted-data-files": "0",
+        "added-records": "2",
+        "total-records": "2",
+        "total-data-files": "2",
+        "added-data-files": "2"
+      },
+      "schema-id": 0
+    }
+  ],
+  "snapshot-log": [
+    {
+      "snapshot-id": 7112769601941751927,
+      "timestamp-ms": 1791839444102
+    }
+  ],
+  "sort-orders": [
+    {
+      "order-id": 0,
+      "fields": []
+    }
+  ],
+  "default-sort-order-id": 0,
+  "last-sequence-number": 1,
+  "refs": {
+    "main": {
+      "snapshot-id": 7112769601941751927,
+      "type": "branch"
+    }
+  }
+}

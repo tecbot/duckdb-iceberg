@@ -122,6 +122,25 @@ def verify():
         assert result == "loaded-file", result
     test("test/sql/local/snapshot_properties_setting.test")
     test("test/sql/copy/copy_snapshot_properties.test")
+    test("test/sql/local/iceberg_scans/iceberg_column_stats_truncated_utf8.test")
+    test("test/sql/copy/utf8_string_bounds.test")
+    test("test/sql/local/iceberg_scans/iceberg_metadata.test")
+    test("test/sql/local/iceberg_scans/iceberg_refs.test")
+    library = (
+        BUILD
+        / "src"
+        / ("libduckdb.dylib" if sys.platform == "darwin" else "libduckdb.so")
+    )
+    run(
+        sys.executable,
+        "test/manifest_io_errors.py",
+        "--duckdb-library",
+        str(library),
+        "--avro-extension",
+        str(BUILD / "extension/avro/avro.duckdb_extension"),
+        "--iceberg-extension",
+        str(artifact),
+    )
     run(
         sys.executable,
         "test/catalog_idempotency.py",
