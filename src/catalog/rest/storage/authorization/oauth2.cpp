@@ -493,7 +493,8 @@ unique_ptr<BaseSecret> OAuth2Authorization::CreateCatalogSecretFunction(ClientCo
 
 unique_ptr<HTTPResponse> OAuth2Authorization::Request(RequestType request_type, ClientContext &context,
                                                       const IRCEndpointBuilder &endpoint_builder, HTTPHeaders &headers,
-                                                      const string &data) {
+                                                      const string &data,
+                                                      optional_ptr<IcebergMutationRequest> mutation) {
 	// --- Step 1: Proactive refresh under lock, then copy token ---
 	// Serialized refresh: at most one thread refreshes at a time.
 	// Refresh I/O under lock is acceptable (rare, bounded by token lifetime).
@@ -517,7 +518,7 @@ unique_ptr<HTTPResponse> OAuth2Authorization::Request(RequestType request_type, 
 		headers["Authorization"] = StringUtil::Format("Bearer %s", bearer_token);
 	}
 
-	auto response = APIUtils::Request(request_type, db, context, endpoint_builder, headers, data);
+	auto response = APIUtils::Request(request_type, db, context, endpoint_builder, headers, data, mutation);
 
 	// --- Step 3: Reactive 401 refresh (exactly once) ---
 	// If the server rejected our token (e.g., revoked before expiry, clock skew,
@@ -535,7 +536,7 @@ unique_ptr<HTTPResponse> OAuth2Authorization::Request(RequestType request_type, 
 		// Lock released before retry -- avoid serializing catalog requests
 		if (should_retry) {
 			headers["Authorization"] = StringUtil::Format("Bearer %s", bearer_token);
-			response = APIUtils::Request(request_type, db, context, endpoint_builder, headers, data);
+			response = APIUtils::Request(request_type, db, context, endpoint_builder, headers, data, mutation);
 		}
 	}
 

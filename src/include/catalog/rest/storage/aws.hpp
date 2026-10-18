@@ -19,12 +19,14 @@ public:
 
 public:
 	unique_ptr<HTTPResponse> Request(RequestType request_type, ClientContext &context, HTTPHeaders &headers,
-	                                 const string &data);
+	                                 const string &data, optional_ptr<IcebergMutationRequest> mutation = nullptr);
 
 	unique_ptr<HTTPResponse> ExecuteRequestLegacy(ClientContext &context, Aws::Http::HttpMethod method,
-	                                              HTTPHeaders &headers, const string &body = "");
+	                                              HTTPHeaders &headers, const string &body = "",
+	                                              optional_ptr<IcebergMutationRequest> mutation = nullptr);
 	unique_ptr<HTTPResponse> ExecuteRequest(ClientContext &context, Aws::Http::HttpMethod method, HTTPHeaders &headers,
-	                                        const string &body = "");
+	                                        const string &body = "",
+	                                        optional_ptr<IcebergMutationRequest> mutation = nullptr);
 	std::shared_ptr<Aws::Http::HttpRequest> CreateSignedRequest(Aws::Http::HttpMethod method, const Aws::Http::URI &uri,
 	                                                            HTTPHeaders &headers, const string &body = "");
 	Aws::Http::URI BuildURI();

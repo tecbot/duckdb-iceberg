@@ -54,6 +54,31 @@ functions accept the same table paths, metadata version, compression, and
 version filename options. For catalog table names, both use the transaction's
 cached metadata file across concurrent commits.
 
+## Catalog mutation retries
+
+When `/v1/config` advertises `idempotency-key-lifetime`, catalog mutations send a
+UUIDv7 `Idempotency-Key`. Transport retries and an OAuth token refresh reuse the
+key. Each separate mutation gets a new key. A restaged commit after a conflict
+also gets a new key on DuckDB 2.0. Catalogs without the field retain their existing
+request behavior.
+
+The advertised lifetime bounds retries. If the window expires, the operation
+reports an unknown outcome and retains files that a commit may have published.
+Check the catalog state before submitting a new mutation. The lifetime must be a
+positive fixed ISO-8601 duration, using days, hours, minutes, or seconds, with up
+to six fractional second digits. Calendar months and years are not supported.
+
+Run the isolated HTTP regression with Python 3.14:
+
+```sh
+python test/catalog_idempotency.py --duckdb build/reldebug/duckdb
+```
+
+The test starts its own local server and temporary warehouse. It checks replay
+after a response is lost, retryable statuses, dropped connections, authorization,
+key lifetime, and preservation of data after an unknown commit outcome. Add
+`--avro-extension` and `--iceberg-extension` paths to test loadable binaries.
+
 ## Developer guide
 
 ### Dependencies
