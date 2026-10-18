@@ -258,28 +258,7 @@ DeserializeResult IcebergValue::DeserializeValue(const string_t &blob, const Log
 		if (Utf8Proc::IsValid(data, size)) {
 			return Value(string(data, size));
 		}
-		if (!bound) {
-			return DeserializeError(blob, type);
-		}
-		// Previous versions of DuckDB-Iceberg truncated string metrics to N bytes,
-		// which could split a multi-byte character and produce invalid UTF-8.
-		// Repair the bound from its longest valid UTF-8 prefix.
-		idx_t len = size;
-		while (len > 0 && !Utf8Proc::IsValid(data, len)) {
-			len--;
-		}
-		if (len == 0) {
-			return DeserializeError(blob, type);
-		}
-		if (*bound == SerializeBound::LOWER_BOUND) {
-			return Value(string(data, len));
-		}
-		// The stored bytes continue past the prefix, so the prefix itself is too small.
-		string rounded;
-		if (!TruncateAndIncrementString(string(data, size), rounded, len)) {
-			return DeserializeError(blob, type);
-		}
-		return Value(std::move(rounded));
+		return DeserializeError(blob, type);
 	}
 	case LogicalTypeId::DECIMAL: {
 		return DeserializeDecimal(blob, type);
