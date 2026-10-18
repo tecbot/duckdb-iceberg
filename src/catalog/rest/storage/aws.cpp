@@ -1,4 +1,5 @@
 #include "catalog/rest/storage/aws.hpp"
+#include "catalog/rest/api/api_utils.hpp"
 
 #include "duckdb/common/http_util.hpp"
 #include "duckdb/common/string_util.hpp"
@@ -173,6 +174,10 @@ std::shared_ptr<Aws::Http::HttpRequest> AWSInput::CreateSignedRequest(Aws::Http:
 		}
 	}
 
+	for (const auto &header : headers) {
+		request->SetHeaderValue(header.first, header.second);
+	}
+
 	std::shared_ptr<Aws::Auth::AWSCredentialsProviderChain> provider;
 	provider = std::make_shared<DuckDBSecretCredentialProvider>(key_id, secret, session_token);
 	auto signer = make_uniq<Aws::Client::AWSAuthV4Signer>(provider, service.c_str(), region.c_str());
@@ -187,7 +192,8 @@ std::shared_ptr<Aws::Http::HttpRequest> AWSInput::CreateSignedRequest(Aws::Http:
 }
 
 unique_ptr<HTTPResponse> AWSInput::ExecuteRequestLegacy(ClientContext &context, Aws::Http::HttpMethod method,
-                                                        HTTPHeaders &headers, const string &body) {
+                                                        HTTPHeaders &headers, const string &body,
+                                                        optional_ptr<IcebergMutationRequest> mutation) {
 #ifndef EMSCRIPTEN
 	InitAWSAPI();
 	auto clientConfig = BuildClientConfig();
@@ -195,6 +201,9 @@ unique_ptr<HTTPResponse> AWSInput::ExecuteRequestLegacy(ClientContext &context, 
 	auto request = CreateSignedRequest(method, uri, headers, body);
 
 	auto httpClient = Aws::Http::CreateHttpClient(clientConfig);
+	if (mutation) {
+		mutation->CheckLifetime();
+	}
 	auto response = httpClient->MakeRequest(request);
 	auto resCode = response->GetResponseCode();
 
@@ -229,7 +238,8 @@ unique_ptr<HTTPResponse> AWSInput::ExecuteRequestLegacy(ClientContext &context, 
 }
 
 unique_ptr<HTTPResponse> AWSInput::ExecuteRequest(ClientContext &context, Aws::Http::HttpMethod method,
-                                                  HTTPHeaders &headers, const string &body) {
+                                                  HTTPHeaders &headers, const string &body,
+                                                  optional_ptr<IcebergMutationRequest> mutation) {
 	bool use_httputils = true;
 	{
 		Value result;
@@ -240,7 +250,7 @@ unique_ptr<HTTPResponse> AWSInput::ExecuteRequest(ClientContext &context, Aws::H
 	}
 	if (!use_httputils) {
 		// Query Iceberg REST catalog via AWS's SDK
-		return ExecuteRequestLegacy(context, method, headers, body);
+		return ExecuteRequestLegacy(context, method, headers, body, mutation);
 	}
 
 	auto uri = BuildURI();
@@ -284,7 +294,12 @@ unique_ptr<HTTPResponse> AWSInput::ExecuteRequest(ClientContext &context, Aws::H
 		signed_headers += "content-type;";
 		res["Content-Type"] = content_type;
 	}
-	signed_headers += "host;x-amz-content-sha256;x-amz-date";
+	signed_headers += "host;";
+	if (headers.HasHeader("Idempotency-Key")) {
+		res["Idempotency-Key"] = headers.GetHeaderValue("Idempotency-Key");
+		signed_headers += "idempotency-key;";
+	}
+	signed_headers += "x-amz-content-sha256;x-amz-date";
 	if (session_token.length() > 0) {
 		signed_headers += ";x-amz-security-token";
 	}
@@ -306,7 +321,11 @@ unique_ptr<HTTPResponse> AWSInput::ExecuteRequest(ClientContext &context, Aws::H
 	if (content_type.length() > 0) {
 		canonical_request += "\ncontent-type:" + content_type;
 	}
-	canonical_request += "\nhost:" + host + "\nx-amz-content-sha256:" + payload_hash + "\nx-amz-date:" + datetime_now;
+	canonical_request += "\nhost:" + host;
+	if (headers.HasHeader("Idempotency-Key")) {
+		canonical_request += "\nidempotency-key:" + headers.GetHeaderValue("Idempotency-Key");
+	}
+	canonical_request += "\nx-amz-content-sha256:" + payload_hash + "\nx-amz-date:" + datetime_now;
 	if (session_token.length() > 0) {
 		canonical_request += "\nx-amz-security-token:" + session_token;
 	}
@@ -341,6 +360,9 @@ unique_ptr<HTTPResponse> AWSInput::ExecuteRequest(ClientContext &context, Aws::H
 
 	params = http_util.InitializeParameters(context, request_url);
 
+	if (mutation) {
+		mutation->Prepare(res, *params);
+	}
 	auto &client = IcebergAuthorizationContextState::GetHTTPClient(attached_db, context);
 	if (client) {
 		client->Initialize(*params);
@@ -353,6 +375,7 @@ unique_ptr<HTTPResponse> AWSInput::ExecuteRequest(ClientContext &context, Aws::H
 	}
 	case Aws::Http::HttpMethod::HTTP_DELETE: {
 		DeleteRequestInfo delete_request(request_url, res, *params);
+		delete_request.try_request = bool(mutation);
 		return http_util.Request(delete_request, client);
 	}
 	case Aws::Http::HttpMethod::HTTP_GET: {
@@ -362,6 +385,7 @@ unique_ptr<HTTPResponse> AWSInput::ExecuteRequest(ClientContext &context, Aws::H
 	case Aws::Http::HttpMethod::HTTP_POST: {
 		PostRequestInfo post_request(request_url, res, *params, reinterpret_cast<const_data_ptr_t>(body.c_str()),
 		                             body.size());
+		post_request.try_request = bool(mutation);
 		auto x = http_util.Request(post_request, client);
 		if (x) {
 			x->body = post_request.buffer_out;
@@ -374,16 +398,16 @@ unique_ptr<HTTPResponse> AWSInput::ExecuteRequest(ClientContext &context, Aws::H
 }
 
 unique_ptr<HTTPResponse> AWSInput::Request(RequestType request_type, ClientContext &context, HTTPHeaders &headers,
-                                           const string &data) {
+                                           const string &data, optional_ptr<IcebergMutationRequest> mutation) {
 	switch (request_type) {
 	case RequestType::GET_REQUEST:
-		return ExecuteRequest(context, Aws::Http::HttpMethod::HTTP_GET, headers);
+		return ExecuteRequest(context, Aws::Http::HttpMethod::HTTP_GET, headers, "", mutation);
 	case RequestType::POST_REQUEST:
-		return ExecuteRequest(context, Aws::Http::HttpMethod::HTTP_POST, headers, data);
+		return ExecuteRequest(context, Aws::Http::HttpMethod::HTTP_POST, headers, data, mutation);
 	case RequestType::DELETE_REQUEST:
-		return ExecuteRequest(context, Aws::Http::HttpMethod::HTTP_DELETE, headers);
+		return ExecuteRequest(context, Aws::Http::HttpMethod::HTTP_DELETE, headers, data, mutation);
 	case RequestType::HEAD_REQUEST:
-		return ExecuteRequest(context, Aws::Http::HttpMethod::HTTP_HEAD, headers);
+		return ExecuteRequest(context, Aws::Http::HttpMethod::HTTP_HEAD, headers, "", mutation);
 	default:
 		throw NotImplementedException("Cannot make request of type %s", EnumUtil::ToString(request_type));
 	}

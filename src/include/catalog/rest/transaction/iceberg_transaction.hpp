@@ -99,6 +99,7 @@ public:
 
 private:
 	void CleanupFiles();
+	bool commit_state_unknown = false;
 
 private:
 	DatabaseInstance &db;

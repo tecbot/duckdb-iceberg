@@ -70,6 +70,9 @@ jobs:
         run: |
           make release
 
+      - name: Test catalog idempotency
+        run: python3 test/catalog_idempotency.py --duckdb build/release/duckdb
+
       - name: Upload DuckDB-Iceberg release folder
         uses: actions/upload-artifact@v4
         with:

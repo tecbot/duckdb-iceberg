@@ -118,7 +118,8 @@ AWSInput SIGV4Authorization::CreateAWSInput(ClientContext &context, const IRCEnd
 
 unique_ptr<HTTPResponse> SIGV4Authorization::Request(RequestType request_type, ClientContext &context,
                                                      const IRCEndpointBuilder &endpoint_builder, HTTPHeaders &headers,
-                                                     const string &data) {
+                                                     const string &data,
+                                                     optional_ptr<IcebergMutationRequest> mutation) {
 	// Note: For SIGV4, custom headers should be added BEFORE signing so they're included in the signature
 	// Merge extra HTTP headers first
 	for (auto &entry : extra_http_headers) {
@@ -126,7 +127,7 @@ unique_ptr<HTTPResponse> SIGV4Authorization::Request(RequestType request_type, C
 	}
 
 	auto aws_input = CreateAWSInput(context, endpoint_builder);
-	return aws_input.Request(request_type, context, headers, data);
+	return aws_input.Request(request_type, context, headers, data, mutation);
 }
 
 } // namespace duckdb

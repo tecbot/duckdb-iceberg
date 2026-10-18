@@ -130,6 +130,8 @@ public:
 	static unique_ptr<SecretEntry> GetHTTPSecret(ClientContext &context, const string &secret_name);
 	void ParsePrefix();
 	void GetConfig(ClientContext &context, IcebergEndpointType &endpoint_type);
+	string idempotency_key_lifetime;
+	optional_idx idempotency_key_lifetime_micros;
 	IRCEndpointBuilder GetBaseUrl() const;
 	string GetWarehouse() const {
 		return warehouse;

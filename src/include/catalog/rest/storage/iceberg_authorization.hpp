@@ -9,6 +9,8 @@
 
 namespace duckdb {
 
+class IcebergMutationRequest;
+
 enum class IcebergEndpointType : uint8_t { AWS_S3TABLES, AWS_GLUE, INVALID };
 
 enum class IcebergAuthorizationType : uint8_t { OAUTH2, SIGV4, NONE, INVALID };
@@ -68,7 +70,8 @@ public:
 public:
 	virtual unique_ptr<HTTPResponse> Request(RequestType request_type, ClientContext &context,
 	                                         const IRCEndpointBuilder &endpoint_builder, HTTPHeaders &headers,
-	                                         const string &data = "") = 0;
+	                                         const string &data = "",
+	                                         optional_ptr<IcebergMutationRequest> mutation = nullptr) = 0;
 
 public:
 	template <class TARGET>

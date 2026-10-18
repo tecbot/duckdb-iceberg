@@ -22,6 +22,7 @@
 #include "catalog/rest/storage/authorization/sigv4.hpp"
 #include "catalog/rest/storage/authorization/none.hpp"
 #include "rest_catalog/objects/catalog_config.hpp"
+#include "catalog/rest/api/api_utils.hpp"
 
 using namespace duckdb_yyjson;
 
@@ -379,6 +380,10 @@ void IcebergCatalog::GetConfig(ClientContext &context, IcebergEndpointType &endp
 		effective_warehouse = "";
 	}
 	auto catalog_config = IRCAPI::GetCatalogConfig(context, *this, effective_warehouse);
+	if (catalog_config.has_idempotency_key_lifetime) {
+		idempotency_key_lifetime = catalog_config.idempotency_key_lifetime;
+		idempotency_key_lifetime_micros = APIUtils::ParseIdempotencyKeyLifetime(idempotency_key_lifetime);
+	}
 	overrides = catalog_config.overrides;
 	defaults = catalog_config.defaults;
 	ParsePrefix();

@@ -465,6 +465,17 @@ void IcebergTransaction::Commit() {
 		DoSchemaDeletes(*temp_con_context);
 	} catch (std::exception &ex) {
 		ErrorData error(ex);
+		if (catalog.idempotency_key_lifetime_micros.IsValid()) {
+			// An expired or exhausted keyed retry may have committed. Retain its files until the outcome is known.
+			auto status = error.ExtraInfo().find("status_code");
+			if (status != error.ExtraInfo().end()) {
+				commit_state_unknown = status->second.empty() || status->second[0] != '4';
+			} else {
+				auto pos = error.RawMessage().find("status code (");
+				auto digit = pos == string::npos ? string::npos : error.RawMessage().find_first_of("0123456789", pos);
+				commit_state_unknown = digit == string::npos || error.RawMessage()[digit] != '4';
+			}
+		}
 		CleanupFiles();
 		DropSecrets(*temp_con_context);
 		temp_con.Rollback();
@@ -684,6 +695,9 @@ public:
 } // namespace
 
 void IcebergTransaction::CleanupFiles() {
+	if (commit_state_unknown) {
+		return;
+	}
 	// remove any files that were written
 	if (!catalog.attach_options.remove_files_on_delete) {
 		// certain catalogs don't allow deletes and will have a s3.deletes attribute in the config describing this

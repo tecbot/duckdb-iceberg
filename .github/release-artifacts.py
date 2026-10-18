@@ -122,6 +122,16 @@ def verify():
         assert result == "loaded-file", result
     test("test/sql/local/snapshot_properties_setting.test")
     test("test/sql/copy/copy_snapshot_properties.test")
+    run(
+        sys.executable,
+        "test/catalog_idempotency.py",
+        "--duckdb",
+        str(BUILD / "duckdb"),
+        "--avro-extension",
+        str(BUILD / "extension/avro/avro.duckdb_extension"),
+        "--iceberg-extension",
+        str(artifact),
+    )
     test("test/sql/local/iceberg_scans/iceberg_column_stats_truncated_utf8.test")
     test("test/sql/copy/utf8_string_bounds.test")
     test("test/sql/local/iceberg_scans/iceberg_metadata.test")
@@ -273,7 +283,13 @@ def publish():
     notes.write_text(
         f"This release adds custom snapshot summary properties. It addresses "
         f"[duckdb/duckdb-iceberg#1249](https://github.com/duckdb/duckdb-iceberg/issues/1249).\n\n"
-        "This revision backports `iceberg_refs()` to DuckDB 1.5. It lists branch "
+        "This revision adds catalog mutation idempotency. When a catalog advertises "
+        "`idempotency-key-lifetime`, mutations send a UUIDv7 key and reuse it across "
+        "transport retries and OAuth refresh. Different mutations and restaged conflict "
+        "retries use new keys. Retry expiry reports an unknown outcome and preserves "
+        "potentially committed data files. Catalogs without the capability keep their "
+        "existing behavior. See [fork issue #6](https://github.com/tecbot/duckdb-iceberg/issues/6).\n\n"
+        "This release also backports `iceberg_refs()` to DuckDB 1.5. It lists branch "
         "and tag heads with their optional retention settings. Join its `main` row "
         "to `iceberg_snapshots()` to find the main head when another branch has "
         "a higher snapshot sequence number. Metadata without `refs` returns "

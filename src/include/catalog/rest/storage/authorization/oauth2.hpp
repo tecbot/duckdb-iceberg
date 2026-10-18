@@ -19,7 +19,8 @@ public:
 	                                                         IcebergAttachOptions &input);
 	unique_ptr<HTTPResponse> Request(RequestType request_type, ClientContext &context,
 	                                 const IRCEndpointBuilder &endpoint_builder, HTTPHeaders &headers,
-	                                 const string &data = "") override;
+	                                 const string &data = "",
+	                                 optional_ptr<IcebergMutationRequest> mutation = nullptr) override;
 	static string GetToken(ClientContext &context, const string &grant_type, const string &uri, const string &client_id,
 	                       const string &client_secret, const string &scope);
 	static void SetCatalogSecretParameters(CreateSecretFunction &function);
