@@ -1,5 +1,5 @@
 # name: test/sql/local/iceberg_scans/iceberg_column_stats_truncated_utf8.test
-# description: A varchar bound whose truncate(16) split a multi-byte character is repaired. The lower bound keeps the valid prefix. The upper bound increments the last code point, so a longer value with that prefix is still inside the bound.
+# description: Invalid UTF-8 string bounds are unknown and do not exclude data files.
 # group: [iceberg_scans]
 
 require avro
@@ -8,20 +8,88 @@ require parquet
 
 require iceberg
 
-# value's bounds are 16 bytes ending on the first byte of a 3-byte character (0xE2).
-# The valid prefix is {"name":"John O. Rounding the last code point up yields {"name":"John P.
-query III
+# The fixture has rows (1, 'foo'), (2, 'bar'), and (3, 'baz'). Both string bounds
+# end with the first byte of a three-byte character. Numeric bounds remain valid.
+statement ok
+SET disabled_optimizers = '';
+
+query TTT
 SELECT column_name, lower_bound, upper_bound
-FROM iceberg_column_stats('{WORKING_DIRECTORY}/data/persistent/utf8_trunc_bounds')
+FROM iceberg_column_stats('__WORKING_DIRECTORY__/data/persistent/utf8_trunc_bounds')
 ORDER BY column_name;
 ----
 id	1	3
-value	{"name":"John O	{"name":"John P
+value	NULL	NULL
 
-# 'foo' is below the repaired lower bound, so the file is pruned.
-query II
+query IT
 SELECT id, value
-FROM iceberg_scan('{WORKING_DIRECTORY}/data/persistent/utf8_trunc_bounds')
+FROM iceberg_scan('__WORKING_DIRECTORY__/data/persistent/utf8_trunc_bounds')
 WHERE value = 'foo'
 ORDER BY id;
 ----
+1	foo
+
+query I
+SELECT id FROM iceberg_scan('__WORKING_DIRECTORY__/data/persistent/utf8_trunc_bounds') WHERE value = 'bar';
+----
+2
+
+query I
+SELECT a.id FROM iceberg_scan('__WORKING_DIRECTORY__/data/persistent/utf8_trunc_bounds') a
+JOIN (SELECT 'baz' AS v) b ON a.value = b.v;
+----
+3
+
+query I
+WITH c AS MATERIALIZED (
+    SELECT * FROM iceberg_scan('__WORKING_DIRECTORY__/data/persistent/utf8_trunc_bounds')
+)
+SELECT id FROM c WHERE value = 'bar';
+----
+2
+
+# Unknown bounds must not be mistaken for an all-null column.
+query I
+SELECT id FROM iceberg_scan('__WORKING_DIRECTORY__/data/persistent/utf8_trunc_bounds')
+WHERE value IS NOT NULL ORDER BY id;
+----
+1
+2
+3
+
+query I
+SELECT id FROM iceberg_scan('__WORKING_DIRECTORY__/data/persistent/utf8_trunc_bounds') ORDER BY value LIMIT 1;
+----
+2
+
+query I
+SELECT id FROM iceberg_scan('__WORKING_DIRECTORY__/data/persistent/utf8_trunc_bounds')
+WHERE value >= 'bar' AND value <= 'baz' ORDER BY id;
+----
+2
+3
+
+query I
+SELECT id FROM iceberg_scan('__WORKING_DIRECTORY__/data/persistent/utf8_trunc_bounds')
+WHERE value = 'foo' OR value = 'bar' ORDER BY id;
+----
+1
+2
+
+# Valid numeric bounds can still exclude this file.
+statement ok
+CALL enable_logging('Iceberg', level = 'debug');
+
+statement ok
+CALL truncate_duckdb_logs();
+
+query I
+SELECT count(*) FROM iceberg_scan('__WORKING_DIRECTORY__/data/persistent/utf8_trunc_bounds') WHERE id > 3;
+----
+0
+
+query I
+SELECT count(*) > 0 FROM duckdb_logs()
+WHERE type = 'Iceberg' AND contains(message, 'skipped ''data_file''');
+----
+true

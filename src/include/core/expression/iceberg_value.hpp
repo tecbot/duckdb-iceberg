@@ -85,8 +85,7 @@ public:
 public:
 	//! Convert a decoded manifest partition value to its source column type.
 	static Value TransformPartitionValue(const Value &value, const LogicalType &type);
-	//! Pass 'bound' when deserializing a lower/upper bound: invalid UTF-8 string bounds are then repaired
-	//! where possible.
+	//! Invalid UTF-8 returns an error. Optional bounds can be omitted by the caller.
 	static DeserializeResult DeserializeValue(const string_t &blob, const LogicalType &target,
 	                                          optional<SerializeBound> bound = nullopt);
 	static SerializeResult SerializeValue(IcebergColumnStats &stats, const LogicalType &column_type,
