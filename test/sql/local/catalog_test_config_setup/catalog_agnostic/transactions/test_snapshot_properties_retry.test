@@ -1,0 +1,68 @@
+# name: test/sql/local/catalog_test_config_setup/catalog_agnostic/transactions/test_snapshot_properties_retry.test
+# description: A stale append retries with its captured properties after SET and RESET
+# group: [transactions]
+
+require-env CATALOG_TEST_CONFIG_SETUP
+
+require-env ATOMIC_COMMIT_CONFLICT_SUPPORT
+
+include test/sql/init_requires
+
+require json
+
+statement ok
+drop table if exists my_datalake.default.snapshot_properties_retry;
+
+statement ok
+create table my_datalake.default.snapshot_properties_retry (id integer);
+
+statement ok
+insert into my_datalake.default.snapshot_properties_retry values (0);
+
+statement ok pending
+begin;
+
+statement ok pending
+set iceberg_snapshot_properties = '{"application.transaction-id":"retry-original","Tag":"upper","tag":"lower"}';
+
+statement ok pending
+insert into my_datalake.default.snapshot_properties_retry values (1);
+
+# Advance the head after the pending write has pinned its parent snapshot.
+statement ok winner
+set iceberg_snapshot_properties = '{"application.transaction-id":"winner"}';
+
+statement ok winner
+insert into my_datalake.default.snapshot_properties_retry values (2);
+
+statement ok pending
+set iceberg_snapshot_properties = '{"application.transaction-id":"later"}';
+
+statement ok pending
+reset iceberg_snapshot_properties;
+
+# The stale parent must cause a conflict and a retry against the winner's snapshot.
+statement ok pending
+commit;
+
+query ITTT
+select json_extract_string(snap, '$."sequence-number"')::BIGINT,
+       json_extract_string(snap, '$.summary."application.transaction-id"'),
+       json_extract_string(snap, '$.summary.Tag'), json_extract_string(snap, '$.summary.tag')
+from (
+ select unnest(json_extract(metadata::JSON, '$.snapshots[*]')) as snap
+ from iceberg_load_table_response(my_datalake.default.snapshot_properties_retry)
+)
+order by 1;
+----
+1	NULL	NULL	NULL
+2	winner	NULL	NULL
+3	retry-original	upper	lower
+
+query I
+select count(*) from my_datalake.default.snapshot_properties_retry;
+----
+3
+
+statement ok
+drop table my_datalake.default.snapshot_properties_retry;

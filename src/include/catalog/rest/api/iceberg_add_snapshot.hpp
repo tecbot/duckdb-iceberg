@@ -29,6 +29,7 @@ public:
 	void CreateUpdate(DatabaseInstance &db, ClientContext &context, IcebergCommitState &commit_state) const override;
 	const vector<IcebergPendingManifest> &GetPendingManifests() const;
 	void AddPendingManifest(IcebergPendingManifest manifest);
+	void SetSnapshotProperties(unordered_map<string, string> properties);
 	//! Moves another MERGE action's manifests here; the caller merges its file invalidations separately.
 	void Merge(IcebergAddSnapshot &other);
 	void SetManifestDeletes(VersionedIcebergManifestDeletes manifest_deletes);
@@ -39,6 +40,7 @@ public:
 private:
 	vector<IcebergPendingManifest> pending_manifests;
 	optional<VersionedIcebergManifestDeletes> manifest_deletes;
+	unordered_map<string, string> snapshot_properties;
 	int32_t schema_id;
 	IcebergSnapshotOperationType operation;
 };

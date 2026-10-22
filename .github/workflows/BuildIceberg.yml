@@ -1,5 +1,9 @@
 name: Build & Test against catalogs
-on: [push, pull_request,repository_dispatch]
+on:
+  push:
+    branches: [main, v1.5-variegata]
+  pull_request:
+  repository_dispatch:
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}-${{ github.head_ref || '' }}-${{ github.base_ref || '' }}-${{ github.ref != 'refs/heads/main' || github.sha }}
   cancel-in-progress: true
@@ -98,6 +102,7 @@ jobs:
             mkdir -p build/relassert/repository/capi_runtime
             cp "$runtime" build/relassert/repository/capi_runtime/
             bash duckdb/scripts/prepare_build_artifact.sh relassert
+            python3 test/catalog_idempotency.py --duckdb build/relassert-artifact/relassert/duckdb --avro-extension build/relassert/extension/avro/avro.duckdb_extension --iceberg-extension build/relassert/extension/iceberg/iceberg.duckdb_extension --conflict-retry
             # Exercise the packaged layout, without requiring a catalog service.
             python3 test/python/test_python_ctas.py check_build build/relassert-artifact/relassert
           upload-name: duckdb-iceberg

@@ -7,6 +7,43 @@ This repository contains DuckDB's Apache Iceberg extension. It adds support for 
 
 User-facing documentation is available on the [Iceberg extension page](https://duckdb.org/docs/extensions/iceberg).
 
+## Custom snapshot summary properties
+
+Use `iceberg_snapshot_properties` to attach application data to each new snapshot:
+
+```sql
+SET SESSION iceberg_snapshot_properties = '{"application.transaction-id":"txn-001"}';
+INSERT INTO my_catalog.my_schema.my_table VALUES (42);
+RESET iceberg_snapshot_properties;
+```
+
+The setting belongs to one connection. Its default is `'{}'`. Each `SET` replaces the complete map. `RESET` clears the map. `SET GLOBAL` is rejected. `COMMIT` and `ROLLBACK` do not clear the setting. If you use a connection pool, reset the setting before you return the connection to the pool, including after an error.
+
+The value must be a JSON object with string values. SQL `NULL`, invalid JSON, other JSON types, non-string values, and duplicate keys are rejected. Names are case-sensitive. For example, `Tag` and `tag` are distinct keys. The extension reserves `operation` and all keys in its snapshot metric registry, including metrics that are absent from the current write. A failed `SET` leaves the previous value unchanged.
+
+Each write copies the current properties when it registers a pending snapshot during execution. A prepared statement uses the setting at `EXECUTE`. Later `SET` or `RESET` statements do not change pending snapshots. Two writes in one transaction can use different maps. A commit retry uses the original copy.
+
+The properties and generated metrics are published in the same snapshot summary. They apply to `INSERT`, `UPDATE`, `DELETE`, `MERGE`, `CREATE TABLE AS`, and maintenance actions that create snapshots. They also apply to `COPY ... (FORMAT ICEBERG)`. COPY publishes its table during finalization, so a later SQL rollback does not remove it. Reads, metadata-only operations, and writes that create no snapshot do not publish properties. New snapshots do not inherit custom properties from their parent.
+
+Each `INSERT` creates an append snapshot, including an INSERT that produces zero rows. An empty append writes a new manifest list without adding data files. It does not create an empty manifest. It captures the current snapshot properties and uses the normal append conflict policy. In an explicit transaction, `COMMIT` publishes the snapshot and `ROLLBACK` discards it. Zero-row UPDATE and DELETE operations do not create a snapshot.
+
+These properties do not provide automatic deduplication. If a commit result is unknown, the application must inspect snapshot history before it decides to repeat a write.
+
+## Fork releases
+
+Download the platform archive for your DuckDB version and platform from [GitHub Releases](https://github.com/tecbot/duckdb-iceberg/releases). The release includes Linux AMD64, Linux ARM64, and macOS ARM64 archives and separate binaries, `SHA256SUMS`, and platform JSON files with the source commits. Linux binaries require glibc 2.28 or later. Release v12 targets official DuckDB 2.0.0. Earlier 2.0 development binaries require the exact engine commit stated in their releases.
+
+Verify the checksums, then extract the archive. It contains `avro.duckdb_extension`, `iceberg.duckdb_extension`, and `manifest.json`. DuckDB needs these file names to find the extension entry points. If you download the separate binaries, rename them to these names before you load them. Enable `allow_unsigned_extensions` when you start DuckDB. For the DuckDB CLI, use `duckdb -unsigned`. Load the bundled Avro file for the same platform, then load the Iceberg file:
+
+```sql
+LOAD '/absolute/path/to/avro.duckdb_extension';
+LOAD '/absolute/path/to/iceberg.duckdb_extension';
+```
+
+Use the release workflow to build and test all three platforms. Linux ARM64 builds run on a native ARM64 runner. Push a tag in the form `iceberg-snapshot-properties-duckdb-<version>-v<release_revision>` from the branch that holds the matching `.github/release-target.json`. The workflow verifies file loading, SQL behavior, REST writes, engine identity, and checksums before it creates the GitHub release. It uses Python 3.14.
+
+The [v12 baseline assessment](docs/releases/v12.md) lists retained patches, upstream behavior, and reproducible verification commands.
+
 ## Row lineage inside transactions
 
 For format version 3 tables, rows inserted within a transaction have NULL `_row_id`
@@ -20,6 +57,31 @@ then updated within one transaction can receive a different `_row_id` in each
 of those snapshots: the updates cannot preserve an ID that has not been assigned
 yet. After commit, further updates preserve its assigned ID. Use a business key
 to identify pending rows, rather than relying on their nullable lineage columns.
+
+## Catalog mutation retries
+
+When `/v1/config` advertises `idempotency-key-lifetime`, catalog mutations send a
+UUIDv7 `Idempotency-Key`. Transport retries and an OAuth token refresh reuse the
+key. Each separate mutation gets a new key. A restaged commit after a conflict
+also gets a new key on DuckDB 2.0. Catalogs without the field retain their existing
+request behavior.
+
+The advertised lifetime bounds retries. If the window expires, the operation
+reports an unknown outcome and retains files that a commit may have published.
+Check the catalog state before submitting a new mutation. The lifetime must be a
+positive fixed ISO-8601 duration, using days, hours, minutes, or seconds, with up
+to six fractional second digits. Calendar months and years are not supported.
+
+Run the isolated HTTP regression with Python 3.14:
+
+```sh
+python test/catalog_idempotency.py --duckdb build/reldebug/duckdb --conflict-retry
+```
+
+The test starts its own local server and temporary warehouse. It checks replay
+after a response is lost, retryable statuses, dropped connections, authorization,
+key lifetime, and preservation of data after an unknown commit outcome. Add
+`--avro-extension` and `--iceberg-extension` paths to test loadable binaries.
 
 ## Development setup
 

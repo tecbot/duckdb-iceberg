@@ -40,7 +40,8 @@ public:
 	vector<string> manifests;
 	IcebergSnapshotMetrics metrics;
 	//! The snapshot summary as read from the metadata, without 'operation'
-	case_insensitive_map_t<string> summary;
+	unordered_map<string, string> summary;
+	unordered_map<string, string> custom_properties;
 };
 
 } // namespace duckdb

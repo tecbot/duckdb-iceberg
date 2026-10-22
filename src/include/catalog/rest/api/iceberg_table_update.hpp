@@ -54,7 +54,8 @@ public:
 	//! Start a snapshot and carry forward its existing manifests, applying this update's file invalidations.
 	IcebergSnapshotWriter
 	CreateSnapshotWriter(int32_t schema_id, IcebergSnapshotOperationType operation,
-	                     optional_ptr<const VersionedIcebergManifestDeletes> manifest_deletes = nullptr);
+	                     optional_ptr<const VersionedIcebergManifestDeletes> manifest_deletes = nullptr,
+	                     const unordered_map<string, string> &snapshot_properties = {});
 	//! Adopt the written snapshot and its manifests together with the REST update that publishes it.
 	void AddWrittenSnapshot(IcebergWrittenSnapshot written);
 

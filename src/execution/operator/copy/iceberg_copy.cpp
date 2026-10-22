@@ -5,6 +5,7 @@
 #include "function/copy/iceberg_copy_function.hpp"
 #include "execution/operator/iceberg_insert.hpp"
 #include "common/iceberg_utils.hpp"
+#include "common/iceberg_snapshot_properties.hpp"
 #include "core/expression/iceberg_value.hpp"
 #include "core/metadata/snapshot/iceberg_snapshot_writer.hpp"
 
@@ -97,8 +98,17 @@ PhysicalOperator &IcebergLogicalCopy::CreatePlan(ClientContext &context, Physica
 CopyIcebergLocalState::CopyIcebergLocalState(ClientContext &context) : LocalSinkState() {
 }
 
+class CopyIcebergGlobalState : public IcebergInsertGlobalState {
+public:
+	explicit CopyIcebergGlobalState(ClientContext &context)
+	    : IcebergInsertGlobalState(context), snapshot_properties(IcebergSnapshotProperties::Get(context)) {
+	}
+
+	const unordered_map<string, string> snapshot_properties;
+};
+
 unique_ptr<GlobalSinkState> IcebergPhysicalCopy::GetGlobalSinkState(ClientContext &context) const {
-	return make_uniq<IcebergInsertGlobalState>(context);
+	return make_uniq<CopyIcebergGlobalState>(context);
 }
 
 unique_ptr<LocalSinkState> IcebergPhysicalCopy::GetLocalSinkState(ExecutionContext &context) const {
@@ -106,7 +116,7 @@ unique_ptr<LocalSinkState> IcebergPhysicalCopy::GetLocalSinkState(ExecutionConte
 }
 
 SinkResultType IcebergPhysicalCopy::Sink(ExecutionContext &context, DataChunk &chunk, OperatorSinkInput &input) const {
-	auto &gstate = input.global_state.Cast<IcebergInsertGlobalState>();
+	auto &gstate = input.global_state.Cast<CopyIcebergGlobalState>();
 	auto &copy_bind_data = bind_data->Cast<CopyIcebergBindData>();
 
 	gstate.AddFiles(chunk, "local_iceberg_table", *copy_bind_data.table_metadata);
@@ -114,7 +124,8 @@ SinkResultType IcebergPhysicalCopy::Sink(ExecutionContext &context, DataChunk &c
 }
 
 static void WriteIcebergMetadata(ClientContext &context, CopyIcebergBindData &bind_data,
-                                 vector<IcebergManifestEntry> &written_files) {
+                                 vector<IcebergManifestEntry> &written_files,
+                                 const unordered_map<string, string> &snapshot_properties) {
 	auto last_updated_ms = Timestamp::GetEpochMs(Timestamp::GetCurrentTimestamp());
 
 	auto &table_metadata = *bind_data.table_metadata;
@@ -149,7 +160,8 @@ static void WriteIcebergMetadata(ClientContext &context, CopyIcebergBindData &bi
 	if (!written_files.empty()) {
 		const auto sequence_number = table_metadata.last_sequence_number + 1;
 		IcebergSnapshotWriter writer(context, table_metadata, table_metadata.GetCurrentSchemaId(),
-		                             IcebergSnapshotOperationType::APPEND, sequence_number, row_ids, files_written);
+		                             IcebergSnapshotOperationType::APPEND, sequence_number, row_ids, files_written,
+		                             snapshot_properties);
 		writer.WriteManifest(IcebergPendingManifest(
 		    IcebergManifestMetadata::FromTableMetadata(table_metadata, IcebergManifestContentType::DATA),
 		    std::move(written_files)));
@@ -184,7 +196,7 @@ static void WriteIcebergMetadata(ClientContext &context, CopyIcebergBindData &bi
 
 SinkFinalizeType IcebergPhysicalCopy::Finalize(Pipeline &pipeline, Event &event, ClientContext &context,
                                                OperatorSinkFinalizeInput &input) const {
-	auto &gstate = input.global_state.Cast<IcebergInsertGlobalState>();
+	auto &gstate = input.global_state.Cast<CopyIcebergGlobalState>();
 	auto &copy_bind_data = bind_data->Cast<CopyIcebergBindData>();
 
 	vector<IcebergManifestEntry> written_files;
@@ -196,14 +208,14 @@ SinkFinalizeType IcebergPhysicalCopy::Finalize(Pipeline &pipeline, Event &event,
 	// Write manifest files, manifest list, and metadata.json
 	// This is where we differ from IcebergInsert - we write a complete metadata.json
 	// instead of updating a catalog entry
-	WriteIcebergMetadata(context, copy_bind_data, written_files);
+	WriteIcebergMetadata(context, copy_bind_data, written_files, gstate.snapshot_properties);
 
 	return SinkFinalizeType::READY;
 }
 
 SourceResultType IcebergPhysicalCopy::GetDataInternal(ExecutionContext &context, DataChunk &chunk,
                                                       OperatorSourceInput &input) const {
-	auto &gstate = sink_state->Cast<IcebergInsertGlobalState>();
+	auto &gstate = sink_state->Cast<CopyIcebergGlobalState>();
 	auto value = Value::BIGINT(gstate.insert_count);
 	chunk.data[0].Append(value);
 	return SourceResultType::FINISHED;

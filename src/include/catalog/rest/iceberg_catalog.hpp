@@ -124,6 +124,8 @@ public:
 	void ParsePrefix();
 	void Configure(ClientContext &context, const rest_api_objects::CatalogConfig &config,
 	               IcebergEndpointType endpoint_type);
+	string idempotency_key_lifetime;
+	optional_idx idempotency_key_lifetime_micros;
 	IRCEndpointBuilder GetBaseUrl() const;
 	string GetWarehouse() const {
 		return warehouse;

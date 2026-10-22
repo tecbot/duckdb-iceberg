@@ -6,6 +6,8 @@
 #include "duckdb/common/string.hpp"
 #include "duckdb/common/vector.hpp"
 #include "duckdb/common/case_insensitive_map.hpp"
+#include "duckdb/common/unordered_map.hpp"
+#include "duckdb/common/unordered_set.hpp"
 
 namespace duckdb {
 namespace rest_api_objects {
@@ -39,7 +41,7 @@ public:
 
 	public:
 		string operation;
-		case_insensitive_map_t<string> additional_properties;
+		unordered_map<string, string> additional_properties;
 	};
 
 public:

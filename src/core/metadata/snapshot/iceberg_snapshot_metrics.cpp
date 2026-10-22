@@ -184,7 +184,16 @@ IcebergSnapshotMetrics::IcebergSnapshotMetrics(const IcebergSnapshot &parent_sna
 	InheritMetric(parent_snapshot.metrics, IcebergSnapshotMetricType::TOTAL_EQUALITY_DELETES);
 }
 
-IcebergSnapshotMetrics::IcebergSnapshotMetrics(const case_insensitive_map_t<string> &snapshot_summary) {
+bool IcebergSnapshotMetrics::IsMetricKey(const string &key) {
+	for (const auto &item : SNAPSHOT_METRIC_KEYS) {
+		if (key == item.name) {
+			return true;
+		}
+	}
+	return false;
+}
+
+IcebergSnapshotMetrics::IcebergSnapshotMetrics(const unordered_map<string, string> &snapshot_summary) {
 	bool file_size_metrics_are_valid = true;
 	for (idx_t i = 0; i < SNAPSHOT_METRIC_KEYS_SIZE; i++) {
 		auto &item = SNAPSHOT_METRIC_KEYS[i];
@@ -376,8 +385,8 @@ const metrics_map_t &IcebergSnapshotMetrics::GetMetrics() const {
 	return metrics;
 }
 
-case_insensitive_map_t<string> IcebergSnapshotMetrics::ToString() const {
-	case_insensitive_map_t<string> result;
+unordered_map<string, string> IcebergSnapshotMetrics::ToString() const {
+	unordered_map<string, string> result;
 	for (auto &entry : metrics) {
 		result[MetricsTypeToString(entry.first)] = std::to_string(entry.second);
 	}

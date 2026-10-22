@@ -8,6 +8,7 @@
 #include "core/metadata/manifest/iceberg_manifest_list.hpp"
 #include "catalog/rest/catalog_entry/table/iceberg_table.hpp"
 #include "common/iceberg_utils.hpp"
+#include "common/iceberg_snapshot_properties.hpp"
 
 namespace duckdb {
 
@@ -47,6 +48,10 @@ rest_api_objects::Snapshot IcebergSnapshot::ToRESTObject(const IcebergTableMetad
 
 	res.summary.operation = OperationTypeToString(operation);
 	res.summary.additional_properties = metrics.ToString();
+	for (const auto &property : custom_properties) {
+		IcebergSnapshotProperties::ValidateKey(property.first);
+		res.summary.additional_properties.emplace(property.first, property.second);
+	}
 
 	if (parent_snapshot_id) {
 		res.parent_snapshot_id = *parent_snapshot_id;
@@ -94,6 +99,11 @@ IcebergSnapshot IcebergSnapshot::ParseSnapshot(const rest_api_objects::Snapshot 
 	}
 	ret.metrics = IcebergSnapshotMetrics(snapshot.summary.additional_properties);
 	ret.summary = snapshot.summary.additional_properties;
+	for (const auto &property : snapshot.summary.additional_properties) {
+		if (!IcebergSnapshotMetrics::IsMetricKey(property.first)) {
+			ret.custom_properties.emplace(property.first, property.second);
+		}
+	}
 
 	if (snapshot.parent_snapshot_id) {
 		ret.parent_snapshot_id = *snapshot.parent_snapshot_id;

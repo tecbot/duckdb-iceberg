@@ -1,0 +1,40 @@
+# name: test/sql/copy/utf8_string_bounds.test
+# description: New writes produce valid UTF-8 string bounds at the byte truncation boundary.
+# group: [copy]
+
+require avro
+
+require parquet
+
+require iceberg
+
+# Put two-, three-, and four-byte code points across byte 16, or exactly at it.
+loop case 0 6
+
+statement ok
+SET VARIABLE title = repeat('a', CASE WHEN ${case} < 3 THEN 15 ELSE 16 - octet_length(encode(chr(list_extract([233, 8217, 128512], ${case} % 3 + 1)))) END)
+    || chr(list_extract([233, 8217, 128512], ${case} % 3 + 1)) || 'tail';
+
+statement ok
+COPY (SELECT 42 AS id, getvariable('title') AS title)
+TO '__TEST_DIR__/utf8_bounds_${case}' (FORMAT ICEBERG);
+
+statement ok
+SET VARIABLE manifest = (
+    SELECT manifest_path FROM iceberg_metadata('__TEST_DIR__/utf8_bounds_${case}') LIMIT 1
+);
+
+# decode() validates UTF-8. Both optional bounds must be present and enclose the value.
+query II
+SELECT decode(map_extract_value(data_file.lower_bounds, 2)) <= getvariable('title'),
+       decode(map_extract_value(data_file.upper_bounds, 2)) >= getvariable('title')
+FROM read_avro(getvariable('manifest'));
+----
+true	true
+
+query I
+SELECT id FROM iceberg_scan('__TEST_DIR__/utf8_bounds_${case}') WHERE title = getvariable('title');
+----
+42
+
+endloop

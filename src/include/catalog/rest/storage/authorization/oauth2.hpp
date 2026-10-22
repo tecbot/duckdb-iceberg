@@ -66,7 +66,9 @@ public:
 	                  optional_ptr<unordered_map<string, Value>> client_options = nullptr);
 	unique_ptr<HTTPResponse> Request(RequestType request_type, ClientContext &context,
 	                                 const IRCEndpointBuilder &endpoint_builder, HTTPHeaders &headers,
-	                                 const string &data = "") override DUCKDB_EXCLUDES(token_mutex);
+	                                 const string &data = "",
+	                                 optional_ptr<IcebergMutationRequest> mutation = nullptr) override
+	    DUCKDB_EXCLUDES(token_mutex);
 	static string GetToken(ClientContext &context, const OAuth2Credentials &credentials, const string &uri,
 	                       const string &scope);
 	static void SetCatalogSecretParameters(CreateSecretFunction &function);

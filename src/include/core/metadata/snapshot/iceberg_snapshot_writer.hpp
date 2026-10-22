@@ -25,6 +25,7 @@ public:
 	IcebergSnapshotWriter(ClientContext &context, const IcebergTableMetadata &table_metadata, int32_t schema_id,
 	                      IcebergSnapshotOperationType operation, sequence_number_t sequence_number,
 	                      IcebergRowIdAllocator &row_ids, vector<string> &created_metadata_files,
+	                      const unordered_map<string, string> &snapshot_properties,
 	                      optional_ptr<const IcebergSnapshot> parent = nullptr);
 	IcebergSnapshotWriter(IcebergSnapshotWriter &&) = default;
 	IcebergSnapshotWriter(const IcebergSnapshotWriter &) = delete;

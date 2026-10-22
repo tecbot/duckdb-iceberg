@@ -137,11 +137,12 @@ void IcebergCommitState::WriteExistingManifests(IcebergSnapshotWriter &writer, i
 
 IcebergSnapshotWriter
 IcebergCommitState::CreateSnapshotWriter(int32_t schema_id, IcebergSnapshotOperationType operation,
-                                         optional_ptr<const VersionedIcebergManifestDeletes> manifest_deletes) {
+                                         optional_ptr<const VersionedIcebergManifestDeletes> manifest_deletes,
+                                         const unordered_map<string, string> &snapshot_properties) {
 	auto &metadata = GetTableMetadata();
 	auto parent = GetLatestSnapshot();
 	IcebergSnapshotWriter writer(context, metadata, schema_id, operation, next_sequence_number++, row_ids,
-	                             created_metadata_files, parent);
+	                             created_metadata_files, snapshot_properties, parent);
 	//! Repack the base manifests once per commit attempt, with this snapshot's identity.
 	if (!written_snapshot) {
 		IcebergManifestMerge::MergeManifestList(manifests, metadata.GetCurrentSchemaId(), writer, *this);

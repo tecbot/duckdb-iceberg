@@ -1,6 +1,7 @@
 #include "catalog/rest/transaction/iceberg_transaction_data.hpp"
 
 #include "catalog/rest/transaction/iceberg_transaction.hpp"
+#include "common/iceberg_snapshot_properties.hpp"
 
 #include "duckdb/common/multi_file/multi_file_reader.hpp"
 #include "duckdb/common/types/uuid.hpp"
@@ -216,9 +217,11 @@ void IcebergTransactionData::AddSnapshot(IcebergSnapshotOperationType operation,
 		                              static_cast<uint8_t>(operation));
 	};
 
-	auto manifest_metadata = IcebergManifestMetadata::FromTableMetadata(table_metadata, manifest_content_type);
 	auto add_snapshot = make_uniq<IcebergAddSnapshot>(table_info, operation);
-	add_snapshot->AddPendingManifest(IcebergPendingManifest(manifest_metadata, std::move(data_files)));
+	if (!data_files.empty()) {
+		auto manifest_metadata = IcebergManifestMetadata::FromTableMetadata(table_metadata, manifest_content_type);
+		add_snapshot->AddPendingManifest(IcebergPendingManifest(manifest_metadata, std::move(data_files)));
+	}
 	// make sure we are still inserting into the current schema
 	if (table_metadata.current_snapshot_id) {
 		TableAddAssertCurrentSchemaId();
@@ -240,6 +243,7 @@ void IcebergTransactionData::AddPendingDeleteManifests(IcebergAddSnapshot &add_s
 
 void IcebergTransactionData::AddSnapshotUpdate(unique_ptr<IcebergAddSnapshot> add_snapshot,
                                                IcebergManifestDeletes &&altered_manifests, bool merge_action) {
+	add_snapshot->SetSnapshotProperties(IcebergSnapshotProperties::Get(context));
 	// All action sinks share this execution's query ID; a later statement gets a different ID.
 	auto query_id = transaction.active_query.load();
 	if (merge_action && merge_query_id && *merge_query_id == query_id) {

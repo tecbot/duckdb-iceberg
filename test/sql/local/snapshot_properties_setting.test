@@ -1,0 +1,314 @@
+# name: test/sql/local/snapshot_properties_setting.test
+# description: Validate connection-scoped snapshot properties before changing the setting
+# group: [local]
+
+include test/sql/init_requires
+
+query T
+select current_setting('iceberg_snapshot_properties');
+----
+{}
+
+statement ok
+set session iceberg_snapshot_properties = '{"application.transaction-id":"txn-001"}';
+
+statement error
+set iceberg_snapshot_properties = NULL;
+----
+not NULL
+
+statement error
+set iceberg_snapshot_properties = 'not json';
+----
+JSON object
+
+statement error
+set iceberg_snapshot_properties = '[]';
+----
+JSON object
+
+statement error
+set iceberg_snapshot_properties = 'null';
+----
+JSON object
+
+statement error
+set iceberg_snapshot_properties = '42';
+----
+JSON object
+
+statement error
+set iceberg_snapshot_properties = 'true';
+----
+JSON object
+
+statement error
+set iceberg_snapshot_properties = '"value"';
+----
+JSON object
+
+statement error
+set iceberg_snapshot_properties = '{"invalid":1}';
+----
+property 'invalid' must have a string value
+
+statement error
+set iceberg_snapshot_properties = '{"invalid":1.5}';
+----
+property 'invalid' must have a string value
+
+statement error
+set iceberg_snapshot_properties = '{"invalid":true}';
+----
+property 'invalid' must have a string value
+
+statement error
+set iceberg_snapshot_properties = '{"invalid":null}';
+----
+property 'invalid' must have a string value
+
+statement error
+set iceberg_snapshot_properties = '{"invalid":[]}';
+----
+property 'invalid' must have a string value
+
+statement error
+set iceberg_snapshot_properties = '{"invalid":{}}';
+----
+property 'invalid' must have a string value
+
+statement error
+set iceberg_snapshot_properties = '{"same":"a","same":"b"}';
+----
+duplicate property 'same'
+
+statement error
+set iceberg_snapshot_properties = '{"same":"a","s\u0061me":"b"}';
+----
+duplicate property 'same'
+
+statement error
+set iceberg_snapshot_properties = '{"operation":"append"}';
+----
+property 'operation' is managed
+
+statement error
+set iceberg_snapshot_properties = '{"added-data-files":"0"}';
+----
+property 'added-data-files' is managed
+
+statement error
+set iceberg_snapshot_properties = '{"deleted-data-files":"0"}';
+----
+property 'deleted-data-files' is managed
+
+statement error
+set iceberg_snapshot_properties = '{"total-data-files":"0"}';
+----
+property 'total-data-files' is managed
+
+statement error
+set iceberg_snapshot_properties = '{"added-delete-files":"0"}';
+----
+property 'added-delete-files' is managed
+
+statement error
+set iceberg_snapshot_properties = '{"added-equality-delete-files":"0"}';
+----
+property 'added-equality-delete-files' is managed
+
+statement error
+set iceberg_snapshot_properties = '{"removed-equality-delete-files":"0"}';
+----
+property 'removed-equality-delete-files' is managed
+
+statement error
+set iceberg_snapshot_properties = '{"added-position-delete-files":"0"}';
+----
+property 'added-position-delete-files' is managed
+
+statement error
+set iceberg_snapshot_properties = '{"removed-position-delete-files":"0"}';
+----
+property 'removed-position-delete-files' is managed
+
+statement error
+set iceberg_snapshot_properties = '{"added-dvs":"0"}';
+----
+property 'added-dvs' is managed
+
+statement error
+set iceberg_snapshot_properties = '{"removed-dvs":"0"}';
+----
+property 'removed-dvs' is managed
+
+statement error
+set iceberg_snapshot_properties = '{"removed-delete-files":"0"}';
+----
+property 'removed-delete-files' is managed
+
+statement error
+set iceberg_snapshot_properties = '{"total-delete-files":"0"}';
+----
+property 'total-delete-files' is managed
+
+statement error
+set iceberg_snapshot_properties = '{"added-records":"0"}';
+----
+property 'added-records' is managed
+
+statement error
+set iceberg_snapshot_properties = '{"deleted-records":"0"}';
+----
+property 'deleted-records' is managed
+
+statement error
+set iceberg_snapshot_properties = '{"total-records":"0"}';
+----
+property 'total-records' is managed
+
+statement error
+set iceberg_snapshot_properties = '{"added-files-size":"0"}';
+----
+property 'added-files-size' is managed
+
+statement error
+set iceberg_snapshot_properties = '{"removed-files-size":"0"}';
+----
+property 'removed-files-size' is managed
+
+statement error
+set iceberg_snapshot_properties = '{"total-files-size":"0"}';
+----
+property 'total-files-size' is managed
+
+statement error
+set iceberg_snapshot_properties = '{"added-position-deletes":"0"}';
+----
+property 'added-position-deletes' is managed
+
+statement error
+set iceberg_snapshot_properties = '{"removed-position-deletes":"0"}';
+----
+property 'removed-position-deletes' is managed
+
+statement error
+set iceberg_snapshot_properties = '{"total-position-deletes":"0"}';
+----
+property 'total-position-deletes' is managed
+
+statement error
+set iceberg_snapshot_properties = '{"added-equality-deletes":"0"}';
+----
+property 'added-equality-deletes' is managed
+
+statement error
+set iceberg_snapshot_properties = '{"removed-equality-deletes":"0"}';
+----
+property 'removed-equality-deletes' is managed
+
+statement error
+set iceberg_snapshot_properties = '{"total-equality-deletes":"0"}';
+----
+property 'total-equality-deletes' is managed
+
+statement error
+set iceberg_snapshot_properties = '{"deleted-duplicate-files":"0"}';
+----
+property 'deleted-duplicate-files' is managed
+
+statement error
+set iceberg_snapshot_properties = '{"changed-partition-count":"0"}';
+----
+property 'changed-partition-count' is managed
+
+statement error
+set iceberg_snapshot_properties = '{"manifests-created":"0"}';
+----
+property 'manifests-created' is managed
+
+statement error
+set iceberg_snapshot_properties = '{"manifests-kept":"0"}';
+----
+property 'manifests-kept' is managed
+
+statement error
+set iceberg_snapshot_properties = '{"manifests-replaced":"0"}';
+----
+property 'manifests-replaced' is managed
+
+statement error
+set iceberg_snapshot_properties = '{"entries-processed":"0"}';
+----
+property 'entries-processed' is managed
+
+statement error
+set global iceberg_snapshot_properties = '{}';
+----
+can only be set per session
+
+statement error
+reset global iceberg_snapshot_properties;
+----
+can only be set per session
+
+# Failed validation must leave the previous setting intact.
+query T
+select current_setting('iceberg_snapshot_properties');
+----
+{"application.transaction-id":"txn-001"}
+
+query T other
+select current_setting('iceberg_snapshot_properties');
+----
+{}
+
+statement ok other
+set iceberg_snapshot_properties = '{"other":"connection"}';
+
+# Names are case-sensitive. Empty keys and values and Unicode strings are permitted.
+statement ok
+set iceberg_snapshot_properties = '{"Tag":"upper","tag":"lower","Operation":"custom","Total-Records":"custom","":"","unicode":"\u00e4"}';
+
+statement ok
+set iceberg_snapshot_properties = '{"replacement":"value"}';
+
+query T
+select current_setting('iceberg_snapshot_properties');
+----
+{"replacement":"value"}
+
+statement ok
+begin;
+
+statement ok
+commit;
+
+query T
+select current_setting('iceberg_snapshot_properties');
+----
+{"replacement":"value"}
+
+statement ok
+begin;
+
+statement ok
+rollback;
+
+query T
+select current_setting('iceberg_snapshot_properties');
+----
+{"replacement":"value"}
+
+statement ok
+reset iceberg_snapshot_properties;
+
+query T
+select current_setting('iceberg_snapshot_properties');
+----
+{}
+
+query T other
+select current_setting('iceberg_snapshot_properties');
+----
+{"other":"connection"}

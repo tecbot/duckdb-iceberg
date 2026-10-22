@@ -451,6 +451,10 @@ void IcebergCatalog::ParsePrefix() {
 
 void IcebergCatalog::Configure(ClientContext &context, const rest_api_objects::CatalogConfig &catalog_config,
                                IcebergEndpointType endpoint_type) {
+	if (catalog_config.idempotency_key_lifetime) {
+		idempotency_key_lifetime = *catalog_config.idempotency_key_lifetime;
+		idempotency_key_lifetime_micros = APIUtils::ParseIdempotencyKeyLifetime(idempotency_key_lifetime);
+	}
 	base_uri = attach_options.catalog_uri;
 	StringUtil::RTrim(base_uri, "/");
 	if (base_uri.empty()) {

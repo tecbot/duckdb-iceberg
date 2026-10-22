@@ -1,0 +1,171 @@
+# name: test/sql/local/catalog_test_config_setup/catalog_agnostic/transactions/test_snapshot_properties.test
+# description: Capture each statement's properties at execution and keep them across setting changes
+# group: [transactions]
+
+require-env CATALOG_TEST_CONFIG_SETUP
+
+include test/sql/init_requires
+
+require json
+
+statement ok
+drop table if exists my_datalake.default.snapshot_properties;
+
+statement ok
+set iceberg_snapshot_properties = '{"application.transaction-id":"txn-001","Tag":"upper","tag":"lower","Operation":"custom"}';
+
+statement ok
+create table my_datalake.default.snapshot_properties (id integer);
+
+# A setting does not cause an empty table to acquire a snapshot.
+query I
+select count(*) from iceberg_snapshots(my_datalake.default.snapshot_properties);
+----
+0
+
+statement ok
+begin;
+
+statement ok
+insert into my_datalake.default.snapshot_properties values (1);
+
+statement ok
+reset iceberg_snapshot_properties;
+
+statement ok
+commit;
+
+statement ok
+create temp view property_summaries as
+select json_extract_string(snap, '$."sequence-number"')::BIGINT as seq,
+       json_extract(snap, '$.summary') as summary
+from (
+ select unnest(json_extract(metadata::JSON, '$.snapshots[*]')) as snap
+ from iceberg_load_table_response(my_datalake.default.snapshot_properties)
+);
+
+query TTTTTT
+select summary->>'application.transaction-id', summary->>'Tag', summary->>'tag', summary->>'Operation',
+       summary->>'operation', summary->>'total-records'
+from property_summaries where seq = 1;
+----
+txn-001	upper	lower	custom	append	1
+
+# The parent properties do not become defaults for the next snapshot.
+statement ok
+insert into my_datalake.default.snapshot_properties values (2);
+
+query I
+select summary->>'application.transaction-id' is null from property_summaries where seq = 2;
+----
+true
+
+# Each pending write owns its own copy, even within one transaction.
+statement ok
+begin;
+
+statement ok
+set iceberg_snapshot_properties = '{"application.transaction-id":"txn-003"}';
+
+statement ok
+insert into my_datalake.default.snapshot_properties values (3);
+
+statement ok
+set iceberg_snapshot_properties = '{"application.transaction-id":"txn-004"}';
+
+statement ok
+insert into my_datalake.default.snapshot_properties values (4);
+
+statement ok
+reset iceberg_snapshot_properties;
+
+statement ok
+commit;
+
+query IT
+select seq, summary->>'application.transaction-id' from property_summaries where seq in (3, 4) order by seq;
+----
+3	txn-003
+4	txn-004
+
+# PREPARE does not capture the setting. Each EXECUTE uses the current setting.
+statement ok
+set iceberg_snapshot_properties = '{"application.transaction-id":"prepare"}';
+
+statement ok
+prepare tagged_insert as insert into my_datalake.default.snapshot_properties values (5);
+
+statement ok
+set iceberg_snapshot_properties = '{"application.transaction-id":"execute"}';
+
+statement ok
+execute tagged_insert;
+
+query T
+select summary->>'application.transaction-id' from property_summaries where seq = 5;
+----
+execute
+
+statement ok
+reset iceberg_snapshot_properties;
+
+statement ok
+execute tagged_insert;
+
+query I
+select summary->>'application.transaction-id' is null from property_summaries where seq = 6;
+----
+true
+
+# A rollback publishes neither the rows nor the pending snapshot.
+statement ok
+set iceberg_snapshot_properties = '{"application.transaction-id":"rolled-back"}';
+
+statement ok
+begin;
+
+statement ok
+insert into my_datalake.default.snapshot_properties values (999);
+
+statement ok
+rollback;
+
+query II
+select count(*), max(seq) from property_summaries;
+----
+6	6
+
+query T
+select current_setting('iceberg_snapshot_properties');
+----
+{"application.transaction-id":"rolled-back"}
+
+# Connection isolation also applies to writes on the same table.
+statement ok other
+insert into my_datalake.default.snapshot_properties values (7);
+
+query I
+select summary->>'application.transaction-id' is null from property_summaries where seq = 7;
+----
+true
+
+# Empty INSERT creates a snapshot; metadata-only writes and empty UPDATE do not.
+statement ok
+alter table my_datalake.default.snapshot_properties add column payload varchar;
+
+statement ok
+insert into my_datalake.default.snapshot_properties (id) select 0 where false;
+
+statement ok
+update my_datalake.default.snapshot_properties set id = 0 where id + random() < -100;
+
+query I
+select count(*) from property_summaries;
+----
+8
+
+statement ok
+reset iceberg_snapshot_properties;
+
+statement ok
+drop table my_datalake.default.snapshot_properties;

@@ -486,7 +486,7 @@ CommitResult IRCAPI::CommitMultiTableUpdate(ClientContext &context, IcebergCatal
 		headers.Insert("X-Iceberg-Access-Delegation", "vended-credentials");
 	}
 	ICUtils::LogPostBody(context, url_builder, body);
-	auto response = catalog.auth_handler->Request(RequestType::POST_REQUEST, context, url_builder, headers, body);
+	auto response = APIUtils::RequestMutation(RequestType::POST_REQUEST, catalog, context, url_builder, headers, body);
 	return BuildCommitResult(context, response);
 }
 
@@ -506,7 +506,7 @@ CommitResult IRCAPI::CommitTableUpdate(ClientContext &context, IcebergCatalog &c
 		headers.Insert("X-Iceberg-Access-Delegation", "vended-credentials");
 	}
 	ICUtils::LogPostBody(context, url_builder, body);
-	auto response = catalog.auth_handler->Request(RequestType::POST_REQUEST, context, url_builder, headers, body);
+	auto response = APIUtils::RequestMutation(RequestType::POST_REQUEST, catalog, context, url_builder, headers, body);
 	return BuildCommitResult(context, response);
 }
 
@@ -523,7 +523,7 @@ void IRCAPI::CommitTableDelete(ClientContext &context, IcebergCatalog &catalog, 
 	                                           Value::BOOLEAN(catalog.attach_options.purge_requested).ToString()));
 
 	HTTPHeaders headers(*context.db);
-	auto response = catalog.auth_handler->Request(RequestType::DELETE_REQUEST, context, url_builder, headers);
+	auto response = APIUtils::RequestMutation(RequestType::DELETE_REQUEST, catalog, context, url_builder, headers);
 	// Glue/S3Tables follow spec and return 204, apache/iceberg-rest-fixture docker image returns 200
 	if (response->status != HTTPStatusCode::NoContent_204 && response->status != HTTPStatusCode::OK_200) {
 		throw HTTPException(*response, "Request to '%s' returned a non-200 status code (%s), with reason: %s, body: %s",
@@ -541,7 +541,7 @@ void IRCAPI::CommitTableRename(ClientContext &context, IcebergCatalog &catalog, 
 	HTTPHeaders headers(*context.db);
 	headers.Insert("Content-Type", "application/json");
 	ICUtils::LogPostBody(context, url_builder, body);
-	auto response = catalog.auth_handler->Request(RequestType::POST_REQUEST, context, url_builder, headers, body);
+	auto response = APIUtils::RequestMutation(RequestType::POST_REQUEST, catalog, context, url_builder, headers, body);
 	// Glue/S3Tables follow spec and return 204, apache/iceberg-rest-fixture docker image returns 200
 	if (response->status != HTTPStatusCode::NoContent_204 && response->status != HTTPStatusCode::OK_200) {
 		throw HTTPException(*response, "Request to '%s' returned a non-200 status code (%s), with reason: %s, body: %s",
@@ -557,7 +557,7 @@ void IRCAPI::CommitNamespaceCreate(ClientContext &context, IcebergCatalog &catal
 	HTTPHeaders headers(*context.db);
 	headers.Insert("Content-Type", "application/json");
 	ICUtils::LogPostBody(context, url_builder, body);
-	auto response = catalog.auth_handler->Request(RequestType::POST_REQUEST, context, url_builder, headers, body);
+	auto response = APIUtils::RequestMutation(RequestType::POST_REQUEST, catalog, context, url_builder, headers, body);
 	if (response->status != HTTPStatusCode::OK_200) {
 		throw HTTPException(*response, "Request to '%s' returned a non-200 status code (%s), with reason: %s, body: %s",
 		                    url_builder.GetURLEncoded(), EnumUtil::ToString(response->status), response->reason,
@@ -574,7 +574,8 @@ void IRCAPI::CommitNamespaceDrop(ClientContext &context, IcebergCatalog &catalog
 
 	HTTPHeaders headers(*context.db);
 	string body = "";
-	auto response = catalog.auth_handler->Request(RequestType::DELETE_REQUEST, context, url_builder, headers, body);
+	auto response =
+	    APIUtils::RequestMutation(RequestType::DELETE_REQUEST, catalog, context, url_builder, headers, body);
 	// Glue/S3Tables follow spec and return 204, apache/iceberg-rest-fixture docker image returns 200
 	if (response->status != HTTPStatusCode::NoContent_204 && response->status != HTTPStatusCode::OK_200) {
 		throw HTTPException(*response, "Request to '%s' returned a non-200 status code (%s), with reason: %s, body: %s",
@@ -597,7 +598,7 @@ void IRCAPI::CommitNamespacePropertiesUpdate(ClientContext &context, IcebergCata
 
 	HTTPHeaders headers(*context.db);
 	headers.Insert("Content-Type", "application/json");
-	auto response = catalog.auth_handler->Request(RequestType::POST_REQUEST, context, url_builder, headers, body);
+	auto response = APIUtils::RequestMutation(RequestType::POST_REQUEST, catalog, context, url_builder, headers, body);
 	if (response->status != HTTPStatusCode::OK_200) {
 		throw HTTPException(*response, "Request to '%s' returned a non-200 status code (%s), with reason: %s, body: %s",
 		                    url_builder.GetURLEncoded(), EnumUtil::ToString(response->status), response->reason,
@@ -625,8 +626,8 @@ rest_api_objects::LoadTableResult IRCAPI::CommitNewTable(ClientContext &context,
 			headers.Insert("X-Iceberg-Access-Delegation", "vended-credentials");
 		}
 		ICUtils::LogPostBody(context, url_builder, create_table_json);
-		auto response =
-		    catalog.auth_handler->Request(RequestType::POST_REQUEST, context, url_builder, headers, create_table_json);
+		auto response = APIUtils::RequestMutation(RequestType::POST_REQUEST, catalog, context, url_builder, headers,
+		                                          create_table_json);
 		if (response->status != HTTPStatusCode::OK_200) {
 			throw HTTPException(
 			    *response, "Request to '%s' returned a non-200 status code (%s), with reason: %s, body: %s",
@@ -757,7 +758,8 @@ void IRCAPI::CommitNewView(ClientContext &context, IcebergCatalog &catalog, cons
 
 	HTTPHeaders headers(*context.db);
 	headers.Insert("Content-Type", "application/json");
-	auto response = catalog.auth_handler->Request(RequestType::POST_REQUEST, context, url_builder, headers, json_body);
+	auto response =
+	    APIUtils::RequestMutation(RequestType::POST_REQUEST, catalog, context, url_builder, headers, json_body);
 	if (response->status != HTTPStatusCode::OK_200) {
 		throw InvalidConfigurationException(
 		    "Request to '%s' returned a non-200 status code (%s), with reason: %s, body: %s",
@@ -775,7 +777,7 @@ void IRCAPI::CommitViewDelete(ClientContext &context, IcebergCatalog &catalog, c
 	url_builder.AddPathComponent(IRCPathComponent::RegularComponent(view_name));
 
 	HTTPHeaders headers(*context.db);
-	auto response = catalog.auth_handler->Request(RequestType::DELETE_REQUEST, context, url_builder, headers);
+	auto response = APIUtils::RequestMutation(RequestType::DELETE_REQUEST, catalog, context, url_builder, headers);
 	if (response->status != HTTPStatusCode::NoContent_204 && response->status != HTTPStatusCode::OK_200) {
 		throw InvalidConfigurationException(
 		    "Request to '%s' returned a non-200 status code (%s), with reason: %s, body: %s",

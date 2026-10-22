@@ -1,0 +1,123 @@
+# name: test/sql/local/catalog_test_config_setup/catalog_agnostic/transactions/test_schema_before_first_snapshot.test
+# description: Snapshotless schema changes retain consistent binding and writing on DuckDB 2.0
+# group: [transactions]
+
+require-env CATALOG_TEST_CONFIG_SETUP
+
+require-env FORMAT_V3_SUPPORT
+
+require-env METADATA_LOG_SUPPORT
+
+require-env METADATA_FILE_READ_SUPPORT
+
+include test/sql/init_requires
+
+statement ok
+set iceberg_use_metadata_log = true;
+
+statement ok reader
+set iceberg_use_metadata_log = false;
+
+loop format 2 4
+
+statement ok
+create table my_datalake.default.schema_first_{format} (id bigint, payload varchar)
+with ('format-version' = {format});
+
+statement ok
+alter table my_datalake.default.schema_first_{format} add column marker timestamp;
+
+query I
+merge into my_datalake.default.schema_first_{format} t
+using (values (1::bigint, 'first', timestamp '2026-01-01')) s(id, payload, marker)
+on t.id = s.id
+when matched then update set payload=s.payload, marker=s.marker
+when not matched then insert (id,payload,marker) values (s.id,s.payload,s.marker);
+----
+1
+
+query ITT reader
+select id, payload, marker from my_datalake.default.schema_first_{format};
+----
+1	first	2026-01-01 00:00:00
+
+statement ok
+insert into my_datalake.default.schema_first_{format} values (2, 'second', timestamp '2026-01-02');
+
+query III reader
+select count(*), count(marker), sum(id) from my_datalake.default.schema_first_{format};
+----
+2	2	3
+
+statement ok pending
+begin;
+
+statement ok pending
+alter table my_datalake.default.schema_first_{format} add column rolled_back bigint;
+
+statement ok pending
+insert into my_datalake.default.schema_first_{format} values (3, 'rollback', null, 3);
+
+statement ok pending
+rollback;
+
+statement error reader
+select rolled_back from my_datalake.default.schema_first_{format};
+----
+<REGEX>:.*(Referenced column "rolled_back" not found|does not have a column.*rolled_back).*
+
+query I reader
+select count(*) from my_datalake.default.schema_first_{format};
+----
+2
+
+statement ok
+create table my_datalake.default.schema_historical_{format} (id bigint)
+with ('format-version' = {format});
+
+statement ok pending
+set iceberg_use_metadata_log = true;
+
+statement ok pending
+begin;
+
+statement ok
+alter table my_datalake.default.schema_historical_{format} add column marker bigint;
+
+# Binding and writing both use the schema visible at BEGIN, including a first lookup after ALTER.
+statement error pending
+insert into my_datalake.default.schema_historical_{format} (id,marker) values (1,1);
+----
+<REGEX>:.*(does not have a column.*marker|Referenced column "marker" not found).*
+
+statement ok pending
+rollback;
+
+# Latest-state mode resolves the current schema for both binding and writing.
+statement ok pending
+set iceberg_use_metadata_log = false;
+
+statement ok pending
+begin;
+
+statement ok pending
+insert into my_datalake.default.schema_historical_{format} (id,marker) values (2,2);
+
+statement ok pending
+commit;
+
+query II reader
+select id, marker from my_datalake.default.schema_historical_{format};
+----
+2	2
+
+statement ok
+drop table my_datalake.default.schema_first_{format};
+
+statement ok
+drop table my_datalake.default.schema_historical_{format};
+
+endloop
+
+statement ok pending
+reset iceberg_use_metadata_log;
