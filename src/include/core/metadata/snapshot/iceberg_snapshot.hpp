@@ -39,6 +39,8 @@ public:
 	//! V1 snapshots may embed manifest file paths instead of referencing a manifest list.
 	vector<string> manifests;
 	IcebergSnapshotMetrics metrics;
+	//! The snapshot summary as read from the metadata, without 'operation'
+	unordered_map<string, string> summary;
 	unordered_map<string, string> custom_properties;
 };
 

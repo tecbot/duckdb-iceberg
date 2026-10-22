@@ -98,6 +98,7 @@ IcebergSnapshot IcebergSnapshot::ParseSnapshot(const rest_api_objects::Snapshot 
 		throw InvalidConfigurationException("Snapshot must contain either 'manifest-list' or 'manifests'");
 	}
 	ret.metrics = IcebergSnapshotMetrics(snapshot.summary.additional_properties);
+	ret.summary = snapshot.summary.additional_properties;
 	for (const auto &property : snapshot.summary.additional_properties) {
 		if (!IcebergSnapshotMetrics::IsMetricKey(property.first)) {
 			ret.custom_properties.emplace(property.first, property.second);

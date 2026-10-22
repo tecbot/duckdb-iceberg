@@ -1,0 +1,56 @@
+# name: test/sql/local/catalog_test_config_setup/catalog_agnostic/transactions/test_read_then_write_conflict.test
+# description: A first read pins the write base even if another connection refreshes the shared cache
+# group: [transactions]
+
+require-env CATALOG_TEST_CONFIG_SETUP
+
+require-env ATOMIC_COMMIT_CONFLICT_SUPPORT
+
+include test/sql/init_requires
+
+# Disable append restaging so the catalog's stale-base rejection reaches the caller.
+statement ok
+CREATE TABLE my_datalake.default.read_write_base (a INTEGER, b INTEGER)
+WITH ('commit.retry.num-retries' = '0');
+
+statement ok
+INSERT INTO my_datalake.default.read_write_base VALUES (0,0);
+
+statement ok reader
+BEGIN;
+
+query I reader
+SELECT count(*) FROM my_datalake.default.read_write_base WHERE a=7;
+----
+0
+
+statement ok writer
+INSERT INTO my_datalake.default.read_write_base VALUES (7,7);
+
+# A third connection resolves the newer head in the catalog-wide cache.
+query I refresher
+SELECT count(*) FROM my_datalake.default.read_write_base WHERE a=7;
+----
+1
+
+query I reader
+SELECT count(*) FROM my_datalake.default.read_write_base WHERE a=7;
+----
+0
+
+statement ok reader
+INSERT INTO my_datalake.default.read_write_base SELECT 7,7
+WHERE NOT EXISTS (SELECT 1 FROM my_datalake.default.read_write_base WHERE a=7);
+
+statement error reader
+COMMIT;
+----
+<REGEX>:.*Conflict_409.*
+
+query I refresher
+SELECT count(*) FROM my_datalake.default.read_write_base WHERE a=7;
+----
+1
+
+statement ok
+DROP TABLE my_datalake.default.read_write_base;

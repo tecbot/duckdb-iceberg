@@ -62,9 +62,7 @@ def test(path, config=None):
         "icu",
     ]
     with tempfile.TemporaryDirectory() as directory:
-        config_value.setdefault("settings", []).append(
-            {"name": "extension_directory", "value": directory}
-        )
+        config_value.setdefault("settings", []).append({"name": "extension_directory", "value": directory})
         config_path = Path(directory) / "config.json"
         config_path.write_text(json.dumps(config_value))
         result = run(
@@ -94,19 +92,12 @@ def verify():
     assert platform in PLATFORMS
     assert sql("SELECT version()") == TARGET["duckdb_version"]
     assert sql("PRAGMA platform") == platform
-    assert (
-        sql("SELECT loaded FROM duckdb_extensions() WHERE extension_name='iceberg'")
-        == "false"
-    )
+    assert sql("SELECT loaded FROM duckdb_extensions() WHERE extension_name='iceberg'") == "false"
     artifact = BUILD / "extension/iceberg/iceberg.duckdb_extension"
     footer = artifact.read_bytes()[-512:]
     field = lambda start: footer[start : start + 32].rstrip(b"\0").decode()
     assert field(192) == platform
-    assert field(160) == (
-        TARGET["duckdb_commit"][:10]
-        if TARGET["prerelease"]
-        else TARGET["duckdb_version"]
-    )
+    assert field(160) == (TARGET["duckdb_commit"][:10] if TARGET["prerelease"] else TARGET["duckdb_version"])
     assert field(128) == git("rev-parse", "HEAD")[:10]
     with tempfile.TemporaryDirectory() as directory:
         table = Path(directory) / "table"
@@ -126,11 +117,7 @@ def verify():
     test("test/sql/copy/utf8_string_bounds.test")
     test("test/sql/local/iceberg_scans/iceberg_metadata.test")
     test("test/sql/local/iceberg_scans/iceberg_refs.test")
-    library = (
-        BUILD
-        / "src"
-        / ("libduckdb.dylib" if sys.platform == "darwin" else "libduckdb.so")
-    )
+    library = BUILD / "src" / ("libduckdb.dylib" if sys.platform == "darwin" else "libduckdb.so")
     run(
         sys.executable,
         "test/manifest_io_errors.py",
@@ -153,6 +140,30 @@ def verify():
         "--conflict-retry",
     )
 
+    run(
+        sys.executable,
+        "test/release_baseline.py",
+        "--duckdb-library",
+        str(library),
+        "--avro-extension",
+        str(BUILD / "extension/avro/avro.duckdb_extension"),
+        "--iceberg-extension",
+        str(artifact),
+        "--expect-fork",
+    )
+    for extra in ([], ["--append-retries"]):
+        run(
+            sys.executable,
+            "test/catalog_read_base.py",
+            "--duckdb-library",
+            str(library),
+            "--avro-extension",
+            str(BUILD / "extension/avro/avro.duckdb_extension"),
+            "--iceberg-extension",
+            str(artifact),
+            *extra,
+        )
+
 
 def catalog():
     catalog_type = TARGET["catalog"]
@@ -163,18 +174,14 @@ def catalog():
             deadline = time.monotonic() + 180
             while True:
                 try:
-                    with urllib.request.urlopen(
-                        "http://127.0.0.1:8181/v1/config", timeout=2
-                    ) as response:
+                    with urllib.request.urlopen("http://127.0.0.1:8181/v1/config", timeout=2) as response:
                         if response.status == 200:
                             break
                 except (urllib.error.URLError, OSError):
                     if time.monotonic() > deadline:
                         raise RuntimeError("Fixture did not become ready")
                     time.sleep(2)
-        directory = Path(
-            "test/sql/local/catalog_test_config_setup/catalog_agnostic/transactions"
-        )
+        directory = Path("test/sql/local/catalog_test_config_setup/catalog_agnostic/transactions")
         for name in TARGET["catalog_tests"]:
             test(directory / name, config)
     finally:
@@ -205,9 +212,7 @@ def package():
         {
             "file": avro_name,
             "sha256": hashlib.sha256(avro_destination.read_bytes()).hexdigest(),
-            "extension_version": avro_destination.read_bytes()[-384:-352]
-            .rstrip(b"\0")
-            .decode(),
+            "extension_version": avro_destination.read_bytes()[-384:-352].rstrip(b"\0").decode(),
         }
     ]
     (ASSETS / f"{platform}.json").write_text(json.dumps(manifest, indent=2) + "\n")
@@ -233,10 +238,7 @@ def bundle():
         archive_manifest["file"] = "iceberg.duckdb_extension"
         assert len(archive_manifest["dependencies"]) == 1
         archive_manifest["dependencies"][0]["file"] = "avro.duckdb_extension"
-        archive = (
-            ASSETS
-            / f"iceberg-{manifest['duckdb_version']}-{manifest['platform']}.tar.gz"
-        )
+        archive = ASSETS / f"iceberg-{manifest['duckdb_version']}-{manifest['platform']}.tar.gz"
         data = (json.dumps(archive_manifest, indent=2) + "\n").encode()
         with tarfile.open(archive, "w:gz") as output:
             output.add(paths[0], arcname="iceberg.duckdb_extension")
@@ -246,10 +248,7 @@ def bundle():
             output.addfile(info, io.BytesIO(data))
         with tarfile.open(archive, "r:gz") as output:
             for item in [archive_manifest, *archive_manifest["dependencies"]]:
-                assert (
-                    hashlib.sha256(output.extractfile(item["file"]).read()).hexdigest()
-                    == item["sha256"]
-                )
+                assert hashlib.sha256(output.extractfile(item["file"]).read()).hexdigest() == item["sha256"]
 
 
 def publish():
@@ -277,22 +276,26 @@ def publish():
         )
     )
     tag = os.environ["GITHUB_REF_NAME"]
-    expected_tag = f"iceberg-snapshot-properties-duckdb-{TARGET['duckdb_version'].removeprefix('v')}-v{TARGET['release_revision']}"
+    expected_tag = (
+        f"iceberg-snapshot-properties-duckdb-{TARGET['duckdb_version'].removeprefix('v')}-v{TARGET['release_revision']}"
+    )
     assert tag == expected_tag, tag
     assert git("rev-list", "-n", "1", tag) == commit
     notes = ASSETS.parent / "release-notes.md"
     notes.write_text(
         f"This release adds custom snapshot summary properties. It addresses "
         f"[duckdb/duckdb-iceberg#1249](https://github.com/duckdb/duckdb-iceberg/issues/1249).\n\n"
-        "This revision adds catalog mutation idempotency. When a catalog advertises "
+        "This revision targets official DuckDB 2.0.0 and retains catalog mutation idempotency. When a catalog advertises "
         "`idempotency-key-lifetime`, mutations send a UUIDv7 key and reuse it across "
         "transport retries and OAuth refresh. Different mutations and restaged conflict "
         "retries use new keys. Retry expiry reports an unknown outcome and preserves "
         "potentially committed data files. Catalogs without the capability keep their "
         "existing behavior. See [fork issue #6](https://github.com/tecbot/duckdb-iceberg/issues/6).\n\n"
         "This DuckDB 2.0 integration includes snapshot properties, empty INSERT snapshots, "
-        "the malformed UTF-8 bounds fix, and upstream schema binding, manifest cleanup, "
-        "and snapshot reference implementations.\n\n"
+        "the conservative malformed UTF-8 bounds fix, and upstream schema binding, manifest cleanup, "
+        "snapshot references, compaction, manifest merging, and commit retry implementations. "
+        "The production baseline is the exact Iceberg commit pinned by DuckDB 2.0.0, "
+        "`4c0c0874c48ec82a3e29910554891d04bcc0e988`.\n\n"
         "Every INSERT creates an append snapshot, including an INSERT that produces zero rows. "
         "Empty appends capture the session snapshot properties, write a new manifest list without new data files, "
         "and use the normal append conflict policy. COMMIT publishes pending snapshots; ROLLBACK discards them.\n\n"
